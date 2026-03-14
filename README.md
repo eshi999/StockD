@@ -1,168 +1,171 @@
-# StockD — Gamified Stock Market Literacy (Qt/QML + “Sage” Coach)
+# StockD — Gamified Stock Market Literacy
 
-StockD is a desktop-first (and Qt-friendly) stock market literacy game. It’s **not** day trading, **not** meme stock hype, and **not** “blind AI predictions.”  
-It’s a guided, gamified learning path where an in-app coach (“Sage”) explains market concepts and helps users anchor lessons to real tickers—without making decisions for them.
+StockD is a desktop-first stock market literacy app built with Flutter. It's **not** day trading, **not** meme stock hype, and **not** "blind AI predictions."  
+It's a guided, gamified learning path where an in-app AI coach ("SAGE") explains market concepts and anchors lessons to real S&P 500 data — without making decisions for users.
+
+> **"SAGE explains. The user decides."**
+
+---
 
 ## What this repo contains
 
-- **Qt/QML UI** for the game screens (Learn, Home, Portfolio, Stock Detail, etc.)
-- A **Sage coaching layer** that plugs into screens to provide:
-  - an ambient “coach panel” (always there, low effort)
-  - a moment-based explanation panel (pre + post question)
-  - optional live ticker context (price/RSI/signal/confidence depending on what you’ve implemented)
-- The beginnings of an ML + data pipeline (kept lightweight in Git — see “Data & Git rules”)
-
-> The core idea is **education + discipline + gamification**, not “AI that trades for you.”
+- **Flutter desktop UI** for Linux/macOS/Windows
+- **SAGE AI coaching layer** powered by a local ML backend:
+  - Explains wrong answers using real S&P 500 data + charts
+  - Educational chatbot for stock market concepts
+  - Never gives buy/sell advice
+- **Python ML backend** (FastAPI + TensorFlow) in `ML/`
+- **Duolingo-style progression** — Worlds → Levels → 20 Questions each
 
 ---
 
 ## Tech stack
 
-- **Qt 6 (Qt Creator)**
-- **QML / QtQuick / QtQuick.Controls**
-- C++ glue where needed (Sage client/controller/engine headers & sources)
-- Optional Python/ML tooling in the `ML/` area (datasets are not committed)
+| Layer | Technology |
+|---|---|
+| UI | Flutter 3.x (Dart) |
+| State | Riverpod 3.x |
+| Navigation | GoRouter 17.x |
+| Charts | fl_chart |
+| Animations | flutter_animate |
+| ML Backend | FastAPI + TensorFlow 2.21 |
+| Data | yfinance + local S&P 500 CSVs |
 
 ---
 
 ## Project structure
-
+```
 StockD/
-├─ CMakeLists.txt
-├─ appStockD/ # C++ app target
-│ ├─ main.cpp
-│ ├─ SageClient.* # network/bridge (if used)
-│ ├─ SageController.* # orchestration (if used)
-│ ├─ SageEngine.* # logic layer (if used)
-│ └─ ...
-├─ qml/
-│ ├─ Main.qml # app shell / navigation
-│ ├─ HomeScreen.qml
-│ ├─ LearnScreen.qml
-│ ├─ PortfolioScreen.qml
-│ ├─ StockDetailScreen.qml
-│ ├─ ProfileScreen.qml
-│ ├─ GameState.qml # XP, unlocks, lesson completion, etc.
-│ ├─ SageStore.qml # Sage state (headline, bullets, active ticker, results)
-│ └─ components/
-│ ├─ SageCoachPanel.qml # reusable Sage UI
-│ ├─ XPBar.qml
-│ ├─ StockCard.qml
-│ ├─ PrimaryButton.qml
-│ └─ ...
+├─ lib/
+│  ├─ main.dart                  # App entry point + router
+│  ├─ theme/app_theme.dart        # Colors, typography, theme
+│  ├─ models/
+│  │  ├─ models.dart              # World, Level, Question, Progress
+│  │  └─ curriculum.dart          # All worlds, levels, questions
+│  ├─ providers/
+│  │  ├─ progress_provider.dart   # XP, streak, hearts
+│  │  ├─ lesson_provider.dart     # Active lesson state
+│  │  └─ sage_provider.dart       # Backend status + SAGE explanations
+│  ├─ services/
+│  │  ├─ sage_service.dart        # HTTP client → ML backend
+│  │  └─ storage_service.dart     # SharedPreferences persistence
+│  ├─ screens/
+│  │  ├─ overworld/               # World map (bg_overworld.png)
+│  │  ├─ home/                    # Dashboard
+│  │  ├─ world/                   # Level select
+│  │  ├─ lesson/                  # Question + result screens
+│  │  ├─ chat/                    # SAGE chatbot
+│  │  └─ sage/                    # SAGE explanation screen
+│  └─ widgets/
+│     ├─ sidebar.dart             # Collapsible nav sidebar
+│     ├─ dashboard.dart           # Home dashboard
+│     ├─ stock_chart.dart         # Interactive price chart
+│     ├─ question_card.dart       # Question + answer options
+│     └─ sage_panel.dart          # SAGE explanation panel
 ├─ ML/
-│ ├─ (scripts, models, notes)
-│ └─ (datasets NOT committed)
-└─ build/ # NOT committed (local only)
-
-
----
-
-## How the game works (user flow)
-
-1. **Home** shows your overview (XP, streak, progress, etc.)
-2. **Learn** is the main “world map” of lessons (Duolingo-style path)
-3. Each lesson opens a **question screen**:
-   - user answers a multiple choice question
-   - gets immediate feedback + explanation + fun fact
-   - Sage can show context (ambient + moment-based)
-4. Completing lessons grants **XP** and unlocks the next nodes
+│  ├─ main.py                     # FastAPI server
+│  ├─ sage_bridge.py              # ML bridge (chat, explain, history)
+│  ├─ inference.py                # CLI inference tool
+│  ├─ fetch_sp500.py              # S&P 500 data downloader
+│  ├─ train_sage.py               # Model training
+│  └─ artifacts/                  # Model files (not committed)
+├─ assets/
+│  └─ images/                     # World images + overworld background
+└─ .gitignore
+```
 
 ---
 
-## Sage (coach) philosophy
+## How the app works
 
-Sage is not an “autopilot.” It’s a coach.
+1. **Overworld map** — choose a world to study
+2. **World screen** — pick a level (5 levels per world, 20 questions each)
+3. **Lesson screen** — answer multiple choice questions
+   - Correct → XP earned, next question
+   - Wrong → SAGE explains using real S&P 500 data + chart
+4. **Result screen** — stars + XP summary
+5. **SAGE Chat** — ask any stock market question anytime
 
-- It can explain *why* a concept matters
-- It can connect a lesson to a ticker (ex: “momentum” anchored to NVDA)
-- It can surface simple signals or indicators **as educational context**
-- It should never say “buy this” as financial advice, or pretend it’s certain
+### Worlds
+| World | Topic | Difficulty |
+|---|---|---|
+| 🌿 Market Basics | Stocks, exchanges, indices | Beginner |
+| 🏘️ Reading the Tape | Charts, candlesticks, price action | Beginner |
+| 🏙️ Fundamentals | Earnings, valuation, balance sheets | Intermediate |
 
-Design rule we use:  
-**“Sage explains. The user decides.”**
+---
+
+## SAGE philosophy
+
+SAGE is a coach, not an autopilot.
+
+- Explains *why* a concept matters
+- Connects lessons to real S&P 500 tickers and historical data
+- Surfaces indicators (RSI, SMA, volatility) **as educational context**
+- **Never gives buy/sell advice**
+- Always shows: *"⚠️ Educational information only, not financial advice."*
 
 ---
 
 ## Local setup
 
-### Prereqs
-- Qt 6.x installed (Qt Creator recommended)
-- A working CMake toolchain (Qt Creator handles this fine)
+### Prerequisites
+- Flutter 3.x (`flutter doctor` should pass)
+- Python 3.12
+- Linux/macOS/Windows desktop
 
-### Build & run (Qt Creator)
-1. Open the repo folder in Qt Creator
-2. Configure kit (Desktop kit for your OS)
-3. Build
-4. Run
+### Flutter app
+```bash
+flutter pub get
+flutter run -d linux   # or macos / windows
+```
 
-### Build folder rule
-Keep builds out of version control.  
-`build/` is local-only and ignored.
+The app automatically starts the ML backend on launch.
 
----
+### ML backend (manual start)
+```bash
+cd ML
+python3.12 -m pip install -r requirements.txt
+python3.12 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
 
-## Data & Git rules (important)
+### Fetch S&P 500 data
+```bash
+cd ML
+python3.12 fetch_sp500.py
+```
 
-GitHub rejects files > 100MB. Our training dataset is large, so:
-
-- **Do not commit raw datasets** (CSV, huge JSON, etc.)
-- **Do not commit build output** (`build/`)
-
-We keep the repo clean and reproducible:
-- Scripts in `ML/` can download/generate data locally
-- Models/artifacts can be generated locally (and optionally stored elsewhere)
-
-### .gitignore basics
-We ignore:
-- `build/`
-- large datasets (ex: `ML/sage_training_data.csv`)
-- platform junk (ex: `.DS_Store`)
-
----
-
-## Our workflow & process (how we build)
-
-This project is being developed like a product, not a school demo. The workflow is:
-
-### 1) UI-first prototype
-- Build screens in QML with reusable components
-- Keep animations lightweight and easy to tune (no overwhelming motion)
-- Focus on clarity: “game feel” without visual chaos
-
-### 2) Define game state + progression
-- Lessons live in a simple data structure (title/xp/question/answers/explanation/fun fact)
-- `GameState` tracks:
-  - completed lessons
-  - unlocked lessons
-  - total XP
-  - streak (optional)
-
-### 3) Integrate Sage as a reusable component
-- `SageCoachPanel` is dropped into screens like a widget
-- `SageStore` holds state so multiple screens can read consistent Sage info
-- We keep Sage “always present” but not intrusive:
-  - ambient mode on the world map
-  - moment mode on lesson screens
-
-### 4) “Real stock anchoring”
-- Each lesson can include `sageCtx` (ticker) and `sagePr` (prompt/intent tag)
-- When a lesson is focused/started, we trigger events like:
-  - `AppEvents.lessonNodeFocused(...)`
-  - `AppEvents.lessonStarted(...)`
-- Sage can then fetch or compute context for that ticker
-
-### 5) Keep the repo shippable
-- No build artifacts committed
-- No giant datasets committed
-- Everything needed to run the app is in source
+### Test the API
+```bash
+curl http://localhost:8000/health
+curl -X POST http://localhost:8000/sage/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is RSI?", "history": []}'
+```
 
 ---
 
-## Conventions we follow
+## Data & Git rules
 
-- QML components live in `qml/components/`
-- Screens live in `qml/`
-- If a screen uses components, it includes:
-  ```qml
-  import "components"
+GitHub rejects files >100MB. Large data files are excluded:
+
+- `ML/historical/` — S&P 500 CSVs (regenerate with `fetch_sp500.py`)
+- `ML/artifacts/*.keras` — model weights (train with `train_sage.py`)
+- `ML/sage_training_data.csv` — training dataset
+
+Everything needed to reproduce the data pipeline is in source.
+
+---
+
+## Requirements
+```
+# ML/requirements.txt
+fastapi
+uvicorn[standard]
+tensorflow==2.21.0
+pandas
+numpy
+scikit-learn
+yfinance
+pydantic
+```
