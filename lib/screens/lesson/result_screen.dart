@@ -1,0 +1,214 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
+import '../../theme/app_theme.dart';
+import '../../models/curriculum.dart';
+
+class ResultScreen extends StatelessWidget {
+  final int worldIndex;
+  final int levelIndex;
+  final int score;
+
+  const ResultScreen({
+    super.key,
+    required this.worldIndex,
+    required this.levelIndex,
+    required this.score,
+  });
+
+  int get _stars {
+    if (score >= 19) return 3;
+    if (score >= 15) return 2;
+    if (score >= 10) return 1;
+    return 0;
+  }
+
+  int get _xpEarned {
+    if (score >= 19) return 150;
+    if (score >= 15) return 100;
+    if (score >= 10) return 50;
+    return 10;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final world = Curriculum.worlds[worldIndex];
+    final level = world.levels[levelIndex];
+    final pct = (score / 20 * 100).round();
+
+    return Scaffold(
+      backgroundColor: StockDTheme.bg,
+      body: Center(
+        child: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Stars
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                    3,
+                    (i) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: Icon(
+                            Icons.star_rounded,
+                            size: i == 1 ? 56 : 44,
+                            color: i < _stars
+                                ? world.accentColor
+                                : StockDTheme.textMuted,
+                          )
+                              .animate(
+                                  delay: Duration(milliseconds: 200 + i * 150))
+                              .scale(
+                                  begin: const Offset(0, 0),
+                                  curve: Curves.elasticOut,
+                                  duration: 600.ms),
+                        )),
+              ),
+              const SizedBox(height: 24),
+
+              Text(
+                _stars >= 3
+                    ? 'PERFECT!'
+                    : _stars >= 2
+                        ? 'GREAT WORK!'
+                        : _stars >= 1
+                            ? 'LEVEL COMPLETE'
+                            : 'KEEP PRACTICING',
+                style:
+                    StockDTheme.displayLarge.copyWith(color: world.accentColor),
+              ).animate().fadeIn(delay: 600.ms),
+              const SizedBox(height: 8),
+
+              Text(level.title, style: StockDTheme.headingMedium),
+              const SizedBox(height: 32),
+
+              // Score card
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: StockDTheme.card,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: StockDTheme.border),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _ResultStat(
+                        label: 'SCORE',
+                        value: '$score / 20',
+                        color: world.accentColor),
+                    _ResultStat(
+                        label: 'ACCURACY',
+                        value: '$pct%',
+                        color: StockDTheme.info),
+                    _ResultStat(
+                        label: 'XP EARNED',
+                        value: '+$_xpEarned',
+                        color: StockDTheme.gold),
+                  ],
+                ),
+              ).animate().fadeIn(delay: 700.ms).slideY(begin: 0.1),
+              const SizedBox(height: 32),
+
+              // Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: _OutlineButton(
+                      label: 'RETRY',
+                      onTap: () =>
+                          context.go('/lesson/$worldIndex/$levelIndex'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: _FilledButton(
+                      label: 'CONTINUE  →',
+                      color: world.accentColor,
+                      onTap: () => context.go('/world/$worldIndex'),
+                    ),
+                  ),
+                ],
+              ).animate().fadeIn(delay: 800.ms),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultStat extends StatelessWidget {
+  final String label, value;
+  final Color color;
+  const _ResultStat(
+      {required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(label, style: StockDTheme.labelSmall),
+        const SizedBox(height: 4),
+        Text(value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: color,
+            )),
+      ],
+    );
+  }
+}
+
+class _OutlineButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _OutlineButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: StockDTheme.border),
+        ),
+        child: Center(
+          child: Text(label, style: StockDTheme.labelSmall),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilledButton extends StatelessWidget {
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  const _FilledButton(
+      {required this.label, required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Center(
+          child: Text(label,
+              style: StockDTheme.labelSmall.copyWith(color: StockDTheme.bg)),
+        ),
+      ),
+    );
+  }
+}
