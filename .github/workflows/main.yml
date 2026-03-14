@@ -13,45 +13,36 @@ on:
           - linux
           - macos
           - windows
+
   push:
     branches: [main]
+
   pull_request:
     branches: [main]
+
   release:
     types: [created]
 
 jobs:
 
-# ─────────────────────────────────────────────────────────────
-# Linux (x64 + arm64)
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────
+# Linux x64
+# ─────────────────────────────────────────
 
   build-linux:
-    name: Linux (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
+    name: Linux x64
+    runs-on: ubuntu-24.04
 
     if: >
       github.event_name != 'workflow_dispatch' ||
       inputs.target == 'all' ||
       inputs.target == 'linux'
 
-    strategy:
-      matrix:
-        include:
-          - arch: x64
-            runner: ubuntu-24.04
-            bundle: build/linux/x64/release
-            artifact: stockd-linux-x64
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-            bundle: build/linux/arm64/release
-            artifact: stockd-linux-arm64
-
     steps:
 
       - uses: actions/checkout@v4
 
-      - name: Install Linux dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -69,32 +60,27 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Enable Linux desktop
-        run: flutter config --enable-linux-desktop
+      - run: flutter config --enable-linux-desktop
+      - run: flutter pub get
+      - run: flutter build linux --release
 
-      - name: Install Flutter deps
-        run: flutter pub get
-
-      - name: Build Flutter Linux
-        run: flutter build linux --release
-
-      - name: Package ML backend
+      - name: Build ML backend
         run: |
           python3.12 -m pip install --upgrade pip
-          python3.12 -m pip install pyinstaller \
-            fastapi uvicorn pydantic pandas numpy \
-            scikit-learn yfinance
+          python3.12 -m pip install \
+            pyinstaller fastapi uvicorn pydantic \
+            pandas numpy scikit-learn yfinance
 
           cd ML
           python3.12 -m PyInstaller --onefile --name sage_server main.py
-          cp dist/sage_server ../${{ matrix.bundle }}/bundle/
+          cp dist/sage_server ../build/linux/x64/release/bundle/
 
-      - name: Create tar.gz
+      - name: Create tarball
         run: |
-          cd ${{ matrix.bundle }}
-          tar -czf stockd-${{ matrix.arch }}.tar.gz bundle/
+          cd build/linux/x64/release
+          tar -czf stockd-linux-x64.tar.gz bundle/
 
-      - name: Create DEB/RPM packages
+      - name: Create DEB + RPM
         run: |
           sudo gem install fpm
 
@@ -102,7 +88,7 @@ jobs:
           mkdir -p pkg/usr/lib/stockd
           mkdir -p pkg/usr/share/applications
 
-          cp -r ${{ matrix.bundle }}/bundle/* pkg/usr/lib/stockd/
+          cp -r build/linux/x64/release/bundle/* pkg/usr/lib/stockd/
 
           cat > pkg/usr/bin/stockd << 'EOF'
           #!/bin/bash
@@ -122,41 +108,39 @@ jobs:
           Categories=Education;Finance;
           EOF
 
-          ARCH_DEB=${{ matrix.arch == 'x64' && 'amd64' || 'arm64' }}
-          ARCH_RPM=${{ matrix.arch == 'x64' && 'x86_64' || 'aarch64' }}
-
           fpm -s dir -t deb \
             -n stockd \
             -v 1.0.0 \
-            --architecture $ARCH_DEB \
+            --architecture amd64 \
             --depends libgtk-3-0 \
             --depends libglib2.0-0 \
             -C pkg \
-            --package stockd-linux-${{ matrix.arch }}.deb .
+            --package stockd-linux-x64.deb .
 
           fpm -s dir -t rpm \
             -n stockd \
             -v 1.0.0 \
-            --architecture $ARCH_RPM \
+            --architecture x86_64 \
             --depends gtk3 \
             --depends glib2 \
             -C pkg \
-            --package stockd-linux-${{ matrix.arch }}.rpm .
+            --package stockd-linux-x64.rpm .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: stockd-linux-x64
           path: |
-            ${{ matrix.bundle }}/stockd-${{ matrix.arch }}.tar.gz
-            stockd-linux-${{ matrix.arch }}.deb
-            stockd-linux-${{ matrix.arch }}.rpm
+            build/linux/x64/release/stockd-linux-x64.tar.gz
+            stockd-linux-x64.deb
+            stockd-linux-x64.rpm
 
-# ─────────────────────────────────────────────────────────────
-# macOS
-# ─────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────
+# macOS Universal
+# ─────────────────────────────────────────
 
   build-macos:
-    name: macOS
+    name: macOS Universal
     runs-on: macos-14
 
     if: >
@@ -180,6 +164,7 @@ jobs:
       - name: Package ML backend
         run: |
           brew install python@3.12
+
           /opt/homebrew/bin/python3.12 -m pip install \
             pyinstaller fastapi uvicorn pydantic \
             pandas numpy scikit-learn yfinance \
@@ -195,6 +180,7 @@ jobs:
       - name: Create DMG
         run: |
           brew install create-dmg
+
           create-dmg \
             --volname "StockD" \
             --window-size 600 400 \
@@ -208,12 +194,13 @@ jobs:
           name: stockd-macos
           path: StockD.dmg
 
-# ─────────────────────────────────────────────────────────────
-# Windows
-# ─────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────
+# Windows x64
+# ─────────────────────────────────────────
 
   build-windows:
-    name: Windows
+    name: Windows x64
     runs-on: windows-2022
 
     if: >
@@ -238,7 +225,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Package ML backend
+      - name: Build ML backend
         run: |
           pip install pyinstaller fastapi uvicorn pydantic `
             pandas numpy scikit-learn yfinance
@@ -257,9 +244,9 @@ jobs:
           InstallDir "$PROGRAMFILES64\StockD"
 
           Section
-          SetOutPath "$INSTDIR"
-          File /r "build\windows\x64\runner\Release\*.*"
-          CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe"
+            SetOutPath "$INSTDIR"
+            File /r "build\windows\x64\runner\Release\*.*"
+            CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe"
           SectionEnd
           "@ | Out-File -Encoding ASCII stockd.nsi
 
@@ -270,9 +257,10 @@ jobs:
           name: stockd-windows-x64
           path: stockd-windows-x64-setup.exe
 
-# ─────────────────────────────────────────────────────────────
-# Release
-# ─────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────
+# Release Upload
+# ─────────────────────────────────────────
 
   release:
     name: Publish Release
@@ -280,8 +268,8 @@ jobs:
       - build-linux
       - build-macos
       - build-windows
-    runs-on: ubuntu-24.04
 
+    runs-on: ubuntu-24.04
     if: github.event_name == 'release'
 
     steps:
