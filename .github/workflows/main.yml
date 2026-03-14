@@ -1,7 +1,20 @@
-# .github/workflows/build.yml
 name: Build StockD
 
 on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Which platform to build'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - linux-x64
+          - linux-arm64
+          - macos
+          - windows-x64
+          - windows-arm64
   push:
     branches: [main]
   pull_request:
@@ -10,10 +23,14 @@ on:
     types: [created]
 
 jobs:
-  # ── Linux x86_64 ────────────────────────────────────────────────────────────
+  # ── Linux x86_64 ─────────────────────────────────────────────────────────────
   build-linux-x64:
     name: Linux x86_64
     runs-on: ubuntu-22.04
+    if: >
+      github.event_name != 'workflow_dispatch' ||
+      inputs.target == 'all' ||
+      inputs.target == 'linux-x64'
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +43,12 @@ jobs:
             libglib2.0-dev libpango1.0-dev \
             libatk1.0-dev libgdk-pixbuf-2.0-dev \
             python3.12 python3.12-dev python3-pip \
-            libssl-dev
+            libssl-dev rpm ruby ruby-dev \
+            dpkg-dev fakeroot
+
+      - name: Install fpm (package builder)
+        run: |
+          sudo gem install fpm
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -53,20 +75,84 @@ jobs:
           pyinstaller --onefile --name sage_server main.py
           cp dist/sage_server ../build/linux/x64/release/bundle/
 
-      - name: Create archive
+      - name: Create .tar.gz
         run: |
           cd build/linux/x64/release
           tar -czf stockd-linux-x64.tar.gz bundle/
 
+      - name: Create .deb
+        run: |
+          mkdir -p pkg_deb/usr/bin
+          mkdir -p pkg_deb/usr/lib/stockd
+          mkdir -p pkg_deb/usr/share/applications
+          mkdir -p pkg_deb/usr/share/icons/hicolor/256x256/apps
+
+          cp -r build/linux/x64/release/bundle/* pkg_deb/usr/lib/stockd/
+
+          # Launcher script
+          cat > pkg_deb/usr/bin/stockd << 'SCRIPT'
+          #!/bin/bash
+          exec /usr/lib/stockd/stockd "$@"
+          SCRIPT
+          chmod +x pkg_deb/usr/bin/stockd
+
+          # Desktop entry
+          cat > pkg_deb/usr/share/applications/stockd.desktop << 'DESKTOP'
+          [Desktop Entry]
+          Name=StockD
+          Comment=Gamified Stock Market Literacy
+          Exec=/usr/lib/stockd/stockd
+          Icon=stockd
+          Terminal=false
+          Type=Application
+          Categories=Education;Finance;
+          DESKTOP
+
+          fpm -s dir -t deb \
+            -n stockd \
+            -v 1.0.0 \
+            --architecture amd64 \
+            --description "StockD — Gamified Stock Market Literacy" \
+            --url "https://github.com/${{ github.repository }}" \
+            --maintainer "StockD Team" \
+            --depends "libgtk-3-0" \
+            --depends "libglib2.0-0" \
+            --depends "python3.12" \
+            -C pkg_deb \
+            --package stockd-linux-x64.deb \
+            .
+
+      - name: Create .rpm
+        run: |
+          fpm -s dir -t rpm \
+            -n stockd \
+            -v 1.0.0 \
+            --architecture x86_64 \
+            --description "StockD — Gamified Stock Market Literacy" \
+            --url "https://github.com/${{ github.repository }}" \
+            --maintainer "StockD Team" \
+            --depends "gtk3" \
+            --depends "glib2" \
+            -C pkg_deb \
+            --package stockd-linux-x64.rpm \
+            .
+
       - uses: actions/upload-artifact@v4
         with:
           name: stockd-linux-x64
-          path: build/linux/x64/release/stockd-linux-x64.tar.gz
+          path: |
+            build/linux/x64/release/stockd-linux-x64.tar.gz
+            stockd-linux-x64.deb
+            stockd-linux-x64.rpm
 
-  # ── Linux ARM64 ─────────────────────────────────────────────────────────────
+  # ── Linux ARM64 ──────────────────────────────────────────────────────────────
   build-linux-arm64:
     name: Linux ARM64
     runs-on: ubuntu-22.04-arm
+    if: >
+      github.event_name != 'workflow_dispatch' ||
+      inputs.target == 'all' ||
+      inputs.target == 'linux-arm64'
     steps:
       - uses: actions/checkout@v4
 
@@ -79,7 +165,11 @@ jobs:
             libglib2.0-dev libpango1.0-dev \
             libatk1.0-dev libgdk-pixbuf-2.0-dev \
             python3.12 python3.12-dev python3-pip \
-            libssl-dev
+            libssl-dev rpm ruby ruby-dev \
+            dpkg-dev fakeroot
+
+      - name: Install fpm
+        run: sudo gem install fpm
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -106,20 +196,81 @@ jobs:
           pyinstaller --onefile --name sage_server main.py
           cp dist/sage_server ../build/linux/arm64/release/bundle/
 
-      - name: Create archive
+      - name: Create .tar.gz
         run: |
           cd build/linux/arm64/release
           tar -czf stockd-linux-arm64.tar.gz bundle/
 
+      - name: Create .deb
+        run: |
+          mkdir -p pkg_deb/usr/bin
+          mkdir -p pkg_deb/usr/lib/stockd
+          mkdir -p pkg_deb/usr/share/applications
+
+          cp -r build/linux/arm64/release/bundle/* pkg_deb/usr/lib/stockd/
+
+          cat > pkg_deb/usr/bin/stockd << 'SCRIPT'
+          #!/bin/bash
+          exec /usr/lib/stockd/stockd "$@"
+          SCRIPT
+          chmod +x pkg_deb/usr/bin/stockd
+
+          cat > pkg_deb/usr/share/applications/stockd.desktop << 'DESKTOP'
+          [Desktop Entry]
+          Name=StockD
+          Comment=Gamified Stock Market Literacy
+          Exec=/usr/lib/stockd/stockd
+          Icon=stockd
+          Terminal=false
+          Type=Application
+          Categories=Education;Finance;
+          DESKTOP
+
+          fpm -s dir -t deb \
+            -n stockd \
+            -v 1.0.0 \
+            --architecture arm64 \
+            --description "StockD — Gamified Stock Market Literacy" \
+            --url "https://github.com/${{ github.repository }}" \
+            --maintainer "StockD Team" \
+            --depends "libgtk-3-0" \
+            --depends "libglib2.0-0" \
+            --depends "python3.12" \
+            -C pkg_deb \
+            --package stockd-linux-arm64.deb \
+            .
+
+      - name: Create .rpm
+        run: |
+          fpm -s dir -t rpm \
+            -n stockd \
+            -v 1.0.0 \
+            --architecture aarch64 \
+            --description "StockD — Gamified Stock Market Literacy" \
+            --url "https://github.com/${{ github.repository }}" \
+            --maintainer "StockD Team" \
+            --depends "gtk3" \
+            --depends "glib2" \
+            -C pkg_deb \
+            --package stockd-linux-arm64.rpm \
+            .
+
       - uses: actions/upload-artifact@v4
         with:
           name: stockd-linux-arm64
-          path: build/linux/arm64/release/stockd-linux-arm64.tar.gz
+          path: |
+            build/linux/arm64/release/stockd-linux-arm64.tar.gz
+            stockd-linux-arm64.deb
+            stockd-linux-arm64.rpm
 
-  # ── macOS x86_64 + ARM64 (Universal) ────────────────────────────────────────
+  # ── macOS Universal ──────────────────────────────────────────────────────────
   build-macos:
     name: macOS Universal
     runs-on: macos-14
+    if: >
+      github.event_name != 'workflow_dispatch' ||
+      inputs.target == 'all' ||
+      inputs.target == 'macos'
     steps:
       - uses: actions/checkout@v4
 
@@ -146,7 +297,8 @@ jobs:
             pydantic pandas numpy scikit-learn yfinance
           cd ML
           python3.12 -m PyInstaller --onefile --name sage_server main.py
-          cp dist/sage_server "../build/macos/Build/Products/Release/stockd.app/Contents/MacOS/"
+          cp dist/sage_server \
+            "../build/macos/Build/Products/Release/stockd.app/Contents/MacOS/"
 
       - name: Create DMG
         run: |
@@ -164,10 +316,14 @@ jobs:
           name: stockd-macos
           path: StockD.dmg
 
-  # ── Windows x86_64 ──────────────────────────────────────────────────────────
+  # ── Windows x86_64 ───────────────────────────────────────────────────────────
   build-windows-x64:
     name: Windows x86_64
     runs-on: windows-2022
+    if: >
+      github.event_name != 'workflow_dispatch' ||
+      inputs.target == 'all' ||
+      inputs.target == 'windows-x64'
     steps:
       - uses: actions/checkout@v4
 
@@ -200,26 +356,69 @@ jobs:
           pyinstaller --onefile --name sage_server main.py
           copy dist\sage_server.exe ..\build\windows\x64\runner\Release\
 
-      - name: Create installer
-        uses: joncloud/makensis-action@v4
-        with:
-          script-file: installer.nsi
-        continue-on-error: true
+      - name: Create NSIS installer
+        run: |
+          # Write NSIS script
+          @"
+          !include "MUI2.nsh"
+          Name "StockD"
+          OutFile "stockd-windows-x64-setup.exe"
+          InstallDir "$PROGRAMFILES64\StockD"
+          RequestExecutionLevel admin
+
+          !insertmacro MUI_PAGE_WELCOME
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_PAGE_FINISH
+          !insertmacro MUI_UNPAGE_CONFIRM
+          !insertmacro MUI_UNPAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "English"
+
+          Section "Install"
+            SetOutPath "$INSTDIR"
+            File /r "build\windows\x64\runner\Release\*.*"
+            CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe"
+            CreateShortcut "$SMPROGRAMS\StockD\StockD.lnk" "$INSTDIR\stockd.exe"
+            WriteUninstaller "$INSTDIR\Uninstall.exe"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\StockD" \
+              "DisplayName" "StockD"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\StockD" \
+              "UninstallString" "$INSTDIR\Uninstall.exe"
+          SectionEnd
+
+          Section "Uninstall"
+            RMDir /r "$INSTDIR"
+            Delete "$DESKTOP\StockD.lnk"
+            Delete "$SMPROGRAMS\StockD\StockD.lnk"
+            DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\StockD"
+          SectionEnd
+          "@ | Out-File -Encoding ASCII stockd.nsi
+
+          # Install NSIS
+          choco install nsis -y
+          makensis stockd.nsi
 
       - name: Zip release (fallback)
         run: |
-          Compress-Archive -Path build\windows\x64\runner\Release\* `
+          Compress-Archive `
+            -Path build\windows\x64\runner\Release\* `
             -DestinationPath stockd-windows-x64.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: stockd-windows-x64
-          path: stockd-windows-x64.zip
+          path: |
+            stockd-windows-x64-setup.exe
+            stockd-windows-x64.zip
 
   # ── Windows ARM64 ────────────────────────────────────────────────────────────
   build-windows-arm64:
     name: Windows ARM64
     runs-on: windows-2022
+    if: >
+      github.event_name != 'workflow_dispatch' ||
+      inputs.target == 'all' ||
+      inputs.target == 'windows-arm64'
     steps:
       - uses: actions/checkout@v4
 
@@ -250,7 +449,48 @@ jobs:
             pandas numpy scikit-learn yfinance
           cd ML
           pyinstaller --onefile --name sage_server main.py
-          copy dist\sage_server.exe ..\build\windows\arm64\runner\Release\
+          copy dist\sage_server.exe `
+            ..\build\windows\arm64\runner\Release\
+
+      - name: Create NSIS installer
+        run: |
+          @"
+          !include "MUI2.nsh"
+          Name "StockD"
+          OutFile "stockd-windows-arm64-setup.exe"
+          InstallDir "$PROGRAMFILES64\StockD"
+          RequestExecutionLevel admin
+
+          !insertmacro MUI_PAGE_WELCOME
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_PAGE_FINISH
+          !insertmacro MUI_UNPAGE_CONFIRM
+          !insertmacro MUI_UNPAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "English"
+
+          Section "Install"
+            SetOutPath "$INSTDIR"
+            File /r "build\windows\arm64\runner\Release\*.*"
+            CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe"
+            CreateShortcut "$SMPROGRAMS\StockD\StockD.lnk" "$INSTDIR\stockd.exe"
+            WriteUninstaller "$INSTDIR\Uninstall.exe"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\StockD" \
+              "DisplayName" "StockD"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\StockD" \
+              "UninstallString" "$INSTDIR\Uninstall.exe"
+          SectionEnd
+
+          Section "Uninstall"
+            RMDir /r "$INSTDIR"
+            Delete "$DESKTOP\StockD.lnk"
+            Delete "$SMPROGRAMS\StockD\StockD.lnk"
+            DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\StockD"
+          SectionEnd
+          "@ | Out-File -Encoding ASCII stockd-arm64.nsi
+
+          choco install nsis -y
+          makensis stockd-arm64.nsi
 
       - name: Zip release
         run: |
@@ -261,9 +501,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: stockd-windows-arm64
-          path: stockd-windows-arm64.zip
+          path: |
+            stockd-windows-arm64-setup.exe
+            stockd-windows-arm64.zip
 
-  # ── Release — attach all artifacts ──────────────────────────────────────────
+  # ── Release — attach all artifacts ───────────────────────────────────────────
   release:
     name: Publish Release
     needs:
@@ -284,9 +526,15 @@ jobs:
         with:
           files: |
             artifacts/stockd-linux-x64/stockd-linux-x64.tar.gz
+            artifacts/stockd-linux-x64/stockd-linux-x64.deb
+            artifacts/stockd-linux-x64/stockd-linux-x64.rpm
             artifacts/stockd-linux-arm64/stockd-linux-arm64.tar.gz
+            artifacts/stockd-linux-arm64/stockd-linux-arm64.deb
+            artifacts/stockd-linux-arm64/stockd-linux-arm64.rpm
             artifacts/stockd-macos/StockD.dmg
+            artifacts/stockd-windows-x64/stockd-windows-x64-setup.exe
             artifacts/stockd-windows-x64/stockd-windows-x64.zip
+            artifacts/stockd-windows-arm64/stockd-windows-arm64-setup.exe
             artifacts/stockd-windows-arm64/stockd-windows-arm64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
