@@ -1,0 +1,292 @@
+# .github/workflows/build.yml
+name: Build StockD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  release:
+    types: [created]
+
+jobs:
+  # ── Linux x86_64 ────────────────────────────────────────────────────────────
+  build-linux-x64:
+    name: Linux x86_64
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libglib2.0-dev libpango1.0-dev \
+            libatk1.0-dev libgdk-pixbuf-2.0-dev \
+            python3.12 python3.12-dev python3-pip \
+            libssl-dev
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: stable
+          cache: true
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Linux
+        run: flutter build linux --release
+
+      - name: Package ML backend
+        run: |
+          pip3 install pyinstaller --break-system-packages
+          cd ML
+          pip3 install fastapi uvicorn pydantic pandas numpy \
+            scikit-learn yfinance --break-system-packages
+          pyinstaller --onefile --name sage_server main.py
+          cp dist/sage_server ../build/linux/x64/release/bundle/
+
+      - name: Create archive
+        run: |
+          cd build/linux/x64/release
+          tar -czf stockd-linux-x64.tar.gz bundle/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stockd-linux-x64
+          path: build/linux/x64/release/stockd-linux-x64.tar.gz
+
+  # ── Linux ARM64 ─────────────────────────────────────────────────────────────
+  build-linux-arm64:
+    name: Linux ARM64
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libglib2.0-dev libpango1.0-dev \
+            libatk1.0-dev libgdk-pixbuf-2.0-dev \
+            python3.12 python3.12-dev python3-pip \
+            libssl-dev
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: stable
+          cache: true
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Linux ARM64
+        run: flutter build linux --release
+
+      - name: Package ML backend
+        run: |
+          pip3 install pyinstaller --break-system-packages
+          cd ML
+          pip3 install fastapi uvicorn pydantic pandas numpy \
+            scikit-learn yfinance --break-system-packages
+          pyinstaller --onefile --name sage_server main.py
+          cp dist/sage_server ../build/linux/arm64/release/bundle/
+
+      - name: Create archive
+        run: |
+          cd build/linux/arm64/release
+          tar -czf stockd-linux-arm64.tar.gz bundle/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stockd-linux-arm64
+          path: build/linux/arm64/release/stockd-linux-arm64.tar.gz
+
+  # ── macOS x86_64 + ARM64 (Universal) ────────────────────────────────────────
+  build-macos:
+    name: macOS Universal
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: stable
+          cache: true
+
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build macOS
+        run: flutter build macos --release
+
+      - name: Install Python deps + package ML backend
+        run: |
+          brew install python@3.12
+          python3.12 -m pip install pyinstaller fastapi uvicorn \
+            pydantic pandas numpy scikit-learn yfinance
+          cd ML
+          python3.12 -m PyInstaller --onefile --name sage_server main.py
+          cp dist/sage_server "../build/macos/Build/Products/Release/stockd.app/Contents/MacOS/"
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "StockD" \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --app-drop-link 450 200 \
+            "StockD.dmg" \
+            "build/macos/Build/Products/Release/stockd.app"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stockd-macos
+          path: StockD.dmg
+
+  # ── Windows x86_64 ──────────────────────────────────────────────────────────
+  build-windows-x64:
+    name: Windows x86_64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Package ML backend
+        run: |
+          pip install pyinstaller fastapi uvicorn pydantic `
+            pandas numpy scikit-learn yfinance
+          cd ML
+          pyinstaller --onefile --name sage_server main.py
+          copy dist\sage_server.exe ..\build\windows\x64\runner\Release\
+
+      - name: Create installer
+        uses: joncloud/makensis-action@v4
+        with:
+          script-file: installer.nsi
+        continue-on-error: true
+
+      - name: Zip release (fallback)
+        run: |
+          Compress-Archive -Path build\windows\x64\runner\Release\* `
+            -DestinationPath stockd-windows-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stockd-windows-x64
+          path: stockd-windows-x64.zip
+
+  # ── Windows ARM64 ────────────────────────────────────────────────────────────
+  build-windows-arm64:
+    name: Windows ARM64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Windows ARM64
+        run: flutter build windows --release --target-platform windows-arm64
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Package ML backend
+        run: |
+          pip install pyinstaller fastapi uvicorn pydantic `
+            pandas numpy scikit-learn yfinance
+          cd ML
+          pyinstaller --onefile --name sage_server main.py
+          copy dist\sage_server.exe ..\build\windows\arm64\runner\Release\
+
+      - name: Zip release
+        run: |
+          Compress-Archive `
+            -Path build\windows\arm64\runner\Release\* `
+            -DestinationPath stockd-windows-arm64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stockd-windows-arm64
+          path: stockd-windows-arm64.zip
+
+  # ── Release — attach all artifacts ──────────────────────────────────────────
+  release:
+    name: Publish Release
+    needs:
+      - build-linux-x64
+      - build-linux-arm64
+      - build-macos
+      - build-windows-x64
+      - build-windows-arm64
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'release'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/stockd-linux-x64/stockd-linux-x64.tar.gz
+            artifacts/stockd-linux-arm64/stockd-linux-arm64.tar.gz
+            artifacts/stockd-macos/StockD.dmg
+            artifacts/stockd-windows-x64/stockd-windows-x64.zip
+            artifacts/stockd-windows-arm64/stockd-windows-arm64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
