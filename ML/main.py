@@ -85,3 +85,13 @@ def chat(req: ChatMessage):
         "response": response,
         "disclaimer": "Educational information only. Not financial advice.",
     }
+    
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "main:app",  # your FastAPI app
+        host="0.0.0.0",
+        port=8000,
+        reload=False,  # must be False in PyInstaller; reload uses multiprocessing
+    )
