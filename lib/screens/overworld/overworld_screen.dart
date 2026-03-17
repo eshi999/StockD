@@ -12,24 +12,19 @@ class OverworldScreen extends StatefulWidget {
   State<OverworldScreen> createState() => _OverworldScreenState();
 }
 
-class _OverworldScreenState extends State<OverworldScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _floatCtrl;
+class _OverworldScreenState extends State<OverworldScreen> {
   int? _hoveredWorld;
 
-  @override
-  void initState() {
-    super.initState();
-    _floatCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 3),
-    )..repeat(reverse: true);
-  }
+  // Island center Y — all islands sit at the same height
+  static const double _islandCenterY = 0.45;
+  // How far the path dips below the islands
+  static const double _pathDipY = 0.58;
 
-  @override
-  void dispose() {
-    _floatCtrl.dispose();
-    super.dispose();
+  Offset _worldPosition(int index, int total, Size size) {
+    final spacing = size.width / (total + 1);
+    final x = spacing * (index + 1);
+    final y = size.height * _islandCenterY;
+    return Offset(x, y);
   }
 
   @override
@@ -41,7 +36,7 @@ class _OverworldScreenState extends State<OverworldScreen>
       backgroundColor: StockDTheme.bg,
       body: Stack(
         children: [
-          // Background image
+          // Background
           Positioned.fill(
             child: Image.asset(
               'assets/images/bg_overworld.png',
@@ -54,19 +49,14 @@ class _OverworldScreenState extends State<OverworldScreen>
               color: Colors.black.withValues(alpha: 0.15),
             ),
           ),
-          // Top bar
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _buildTopBar(context),
-          ),
-          // Dashed path
+          // Dashed path — drawn below islands
           Positioned.fill(
             child: CustomPaint(
               painter: _PathPainter(
-                worldCount: worlds.length,
+                worlds: worlds,
                 size: size,
+                islandCenterY: _islandCenterY,
+                pathDipY: _pathDipY,
               ),
             ),
           ),
@@ -77,17 +67,23 @@ class _OverworldScreenState extends State<OverworldScreen>
             final pos = _worldPosition(i, worlds.length, size);
             return Positioned(
               left: pos.dx - 120,
-              top: pos.dy - 140,
+              top: pos.dy - 120,
               child: _WorldIsland(
                 world: world,
                 index: i,
                 isHovered: _hoveredWorld == i,
-                floatCtrl: _floatCtrl,
                 onHover: (h) => setState(() => _hoveredWorld = h ? i : null),
                 onTap: world.isUnlocked ? () => context.go('/world/$i') : null,
               ),
             );
           }),
+          // Top bar
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _buildTopBar(context),
+          ),
           // Bottom hint
           Positioned(
             bottom: 24,
@@ -196,21 +192,13 @@ class _OverworldScreenState extends State<OverworldScreen>
       ),
     ).animate().fadeIn(duration: 400.ms);
   }
-
-  Offset _worldPosition(int index, int total, Size size) {
-    final spacing = size.width / (total + 1);
-    final x = spacing * (index + 1);
-    final y = size.height * 0.52 + (index % 2 == 0 ? -20.0 : 20.0);
-    return Offset(x, y);
-  }
 }
 
 // ── World Island ──────────────────────────────────────────────────────────────
-class _WorldIsland extends StatelessWidget {
+class _WorldIsland extends StatefulWidget {
   final World world;
   final int index;
   final bool isHovered;
-  final AnimationController floatCtrl;
   final void Function(bool) onHover;
   final VoidCallback? onTap;
 
@@ -218,45 +206,88 @@ class _WorldIsland extends StatelessWidget {
     required this.world,
     required this.index,
     required this.isHovered,
-    required this.floatCtrl,
     required this.onHover,
     required this.onTap,
   });
 
   @override
+  State<_WorldIsland> createState() => _WorldIslandState();
+}
+
+class _WorldIslandState extends State<_WorldIsland>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _floatCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _floatCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+  }
+
+  @override
+  void didUpdateWidget(_WorldIsland old) {
+    super.didUpdateWidget(old);
+    if (widget.isHovered && widget.world.isUnlocked) {
+      if (!_floatCtrl.isAnimating) {
+        _floatCtrl.repeat(reverse: true);
+      }
+    } else {
+      _floatCtrl.stop();
+      _floatCtrl.animateTo(
+        0.5,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _floatCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final locked = !world.isUnlocked;
+    final locked = !widget.world.isUnlocked;
 
     return MouseRegion(
-      onEnter: (_) => onHover(true),
-      onExit: (_) => onHover(false),
+      onEnter: (_) => widget.onHover(true),
+      onExit: (_) => widget.onHover(false),
       child: GestureDetector(
-        onTap: onTap,
+        onTap: widget.onTap,
         child: SizedBox(
           width: 240,
-          height: 280,
+          height: 260,
           child: AnimatedBuilder(
-            animation: floatCtrl,
+            animation: _floatCtrl,
             builder: (_, child) {
               final floatOffset =
-                  (floatCtrl.value - 0.5) * (index % 2 == 0 ? 12.0 : -8.0);
+                  widget.isHovered ? (_floatCtrl.value - 0.5) * 10.0 : 0.0;
               return Transform.translate(
                 offset: Offset(0, floatOffset),
                 child: child,
               );
             },
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   transform: Matrix4.identity()
-                    ..scale(isHovered && !locked ? 1.06 : 1.0,
-                        isHovered && !locked ? 1.06 : 1.0, 1.0),
+                    ..scale(
+                      widget.isHovered && !locked ? 1.06 : 1.0,
+                      widget.isHovered && !locked ? 1.06 : 1.0,
+                      1.0,
+                    ),
                   transformAlignment: Alignment.center,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      if (isHovered && !locked)
+                      if (widget.isHovered && !locked)
                         Container(
                           width: 200,
                           height: 200,
@@ -264,7 +295,8 @@ class _WorldIsland extends StatelessWidget {
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: world.accentColor.withValues(alpha: 0.4),
+                                color: widget.world.accentColor
+                                    .withValues(alpha: 0.4),
                                 blurRadius: 40,
                                 spreadRadius: 10,
                               ),
@@ -274,7 +306,7 @@ class _WorldIsland extends StatelessWidget {
                       Opacity(
                         opacity: locked ? 0.5 : 1.0,
                         child: Image.asset(
-                          world.imagePath,
+                          widget.world.imagePath,
                           width: 180,
                           height: 180,
                           fit: BoxFit.contain,
@@ -306,39 +338,41 @@ class _WorldIsland extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
                   decoration: BoxDecoration(
-                    color: isHovered && !locked
-                        ? world.accentColor.withValues(alpha: 0.9)
+                    color: widget.isHovered && !locked
+                        ? widget.world.accentColor.withValues(alpha: 0.9)
                         : Colors.black.withValues(alpha: 0.65),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: isHovered && !locked
-                          ? world.accentColor
+                      color: widget.isHovered && !locked
+                          ? widget.world.accentColor
                           : Colors.white.withValues(alpha: 0.25),
                     ),
-                    boxShadow: isHovered && !locked
+                    boxShadow: widget.isHovered && !locked
                         ? [
                             BoxShadow(
-                              color: world.accentColor.withValues(alpha: 0.4),
+                              color: widget.world.accentColor
+                                  .withValues(alpha: 0.4),
                               blurRadius: 12,
                             ),
                           ]
                         : [],
                   ),
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'WORLD ${index + 1}',
+                        'WORLD ${widget.index + 1}',
                         style: StockDTheme.labelSmall.copyWith(
-                          color: isHovered && !locked
+                          color: widget.isHovered && !locked
                               ? StockDTheme.bg
                               : Colors.white.withValues(alpha: 0.6),
                           letterSpacing: 2,
                         ),
                       ),
-                      if (isHovered && !locked) ...[
+                      if (widget.isHovered && !locked) ...[
                         const SizedBox(height: 2),
                         Text(
-                          world.title,
+                          widget.world.title,
                           style: StockDTheme.headingMedium.copyWith(
                             fontSize: 12,
                             color: StockDTheme.bg,
@@ -348,17 +382,18 @@ class _WorldIsland extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (!locked && world.completedLevels > 0) ...[
+                if (!locked && widget.world.completedLevels > 0) ...[
                   const SizedBox(height: 6),
                   SizedBox(
                     width: 100,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(3),
                       child: LinearProgressIndicator(
-                        value: world.progress,
+                        value: widget.world.progress,
                         minHeight: 4,
                         backgroundColor: Colors.white.withValues(alpha: 0.2),
-                        valueColor: AlwaysStoppedAnimation(world.accentColor),
+                        valueColor:
+                            AlwaysStoppedAnimation(widget.world.accentColor),
                       ),
                     ),
                   ),
@@ -369,7 +404,7 @@ class _WorldIsland extends StatelessWidget {
         ),
       ),
     )
-        .animate(delay: Duration(milliseconds: 200 + index * 150))
+        .animate(delay: Duration(milliseconds: 200 + widget.index * 150))
         .fadeIn(duration: 500.ms)
         .slideY(begin: 0.1);
   }
@@ -377,29 +412,50 @@ class _WorldIsland extends StatelessWidget {
 
 // ── Path Painter ──────────────────────────────────────────────────────────────
 class _PathPainter extends CustomPainter {
-  final int worldCount;
+  final List<World> worlds;
   final Size size;
+  final double islandCenterY;
+  final double pathDipY;
 
-  const _PathPainter({required this.worldCount, required this.size});
+  const _PathPainter({
+    required this.worlds,
+    required this.size,
+    required this.islandCenterY,
+    required this.pathDipY,
+  });
 
   @override
   void paint(Canvas canvas, Size canvasSize) {
     final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.35)
+      ..color = Colors.white.withValues(alpha: 0.4)
       ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke;
 
-    final spacing = canvasSize.width / (worldCount + 1);
+    final total = worlds.length;
+    final spacing = canvasSize.width / (total + 1);
+    final islandY = canvasSize.height * islandCenterY;
+    final dipY = canvasSize.height * pathDipY;
+    // Connect from the bottom-center of each island
+    const islandBottomOffset = 90.0;
 
-    for (int i = 0; i < worldCount - 1; i++) {
+    for (int i = 0; i < total - 1; i++) {
       final x1 = spacing * (i + 1);
-      final y1 = canvasSize.height * 0.52 + (i % 2 == 0 ? -20.0 : 20.0);
       final x2 = spacing * (i + 2);
-      final y2 = canvasSize.height * 0.52 + ((i + 1) % 2 == 0 ? -20.0 : 20.0);
+      final y = islandY + islandBottomOffset;
+      final midX = (x1 + x2) / 2;
 
+      // Single cubic bezier dipping below the islands — no straight segments
       final path = Path()
-        ..moveTo(x1, y1)
-        ..lineTo(x2, y2);
+        ..moveTo(x1, y)
+        ..cubicTo(
+          midX - (x2 - x1) * 0.15,
+          dipY,
+          midX + (x2 - x1) * 0.15,
+          dipY,
+          x2,
+          y,
+        );
+
       _drawDashed(canvas, path, paint);
     }
   }
@@ -411,6 +467,8 @@ class _PathPainter extends CustomPainter {
     bool drawing = true;
 
     for (final metric in path.computeMetrics()) {
+      distance = 0.0;
+      drawing = true;
       while (distance < metric.length) {
         final len = drawing ? dashWidth : dashSpace;
         if (drawing) {
@@ -428,5 +486,5 @@ class _PathPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PathPainter old) =>
-      old.worldCount != worldCount || old.size != size;
+      old.worlds.length != worlds.length || old.size != size;
 }
