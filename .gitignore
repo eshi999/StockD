@@ -12,6 +12,7 @@
 .swiftpm/
 migrate_working_dir/
 binaries/
+ML/historical/
 
 # IntelliJ related
 *.iml
