@@ -57,6 +57,15 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
       );
     }
 
+    // Game Over: 0 lives left (NEW)
+    if (ref.read(progressProvider).hearts == 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        context.go('/result/${widget.worldIndex}/${widget.levelIndex}',
+            extra: lessonState.score);
+      });
+      return const SizedBox.shrink();
+    }
+
     if (lessonState.isComplete) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref
@@ -343,7 +352,7 @@ class _NextButtonState extends State<_NextButton> {
           ),
           child: Center(
             child: Text(
-              'NEXT QUESTION  →',
+              'NEXT QUESTION →',
               style: StockDTheme.labelSmall.copyWith(
                 color: StockDTheme.bg,
                 letterSpacing: 2,

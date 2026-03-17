@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import '../../theme/app_theme.dart';
 import '../../models/curriculum.dart';
+import '../../providers/lesson_provider.dart';
+import '../../providers/progress_provider.dart';
+import '../../providers/sage_provider.dart';
 
-class ResultScreen extends StatelessWidget {
+class ResultScreen extends ConsumerWidget {
   final int worldIndex;
   final int levelIndex;
   final int score;
@@ -30,8 +34,10 @@ class ResultScreen extends StatelessWidget {
     return 10;
   }
 
+  bool get _isGameOver => score < 10;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final world = Curriculum.worlds[worldIndex];
     final level = world.levels[levelIndex];
     final pct = (score / 20 * 100).round();
@@ -44,30 +50,29 @@ class ResultScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Stars
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(
-                    3,
-                    (i) => Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          child: Icon(
-                            Icons.star_rounded,
-                            size: i == 1 ? 56 : 44,
-                            color: i < _stars
-                                ? world.accentColor
-                                : StockDTheme.textMuted,
-                          )
-                              .animate(
-                                  delay: Duration(milliseconds: 200 + i * 150))
-                              .scale(
-                                  begin: const Offset(0, 0),
-                                  curve: Curves.elasticOut,
-                                  duration: 600.ms),
-                        )),
+                  3,
+                  (i) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Icon(
+                      Icons.star_rounded,
+                      size: i == 1 ? 56 : 44,
+                      color: i < _stars
+                          ? world.accentColor
+                          : StockDTheme.textMuted,
+                    )
+                        .animate(delay: Duration(milliseconds: 200 + i * 150))
+                        .scale(
+                          begin: const Offset(0, 0),
+                          curve: Curves.elasticOut,
+                          duration: 600.ms,
+                        ),
+                  ),
+                ),
               ),
               const SizedBox(height: 24),
-
               Text(
                 _stars >= 3
                     ? 'PERFECT!'
@@ -76,15 +81,13 @@ class ResultScreen extends StatelessWidget {
                         : _stars >= 1
                             ? 'LEVEL COMPLETE'
                             : 'KEEP PRACTICING',
-                style:
-                    StockDTheme.displayLarge.copyWith(color: world.accentColor),
+                style: StockDTheme.displayLarge.copyWith(
+                  color: world.accentColor,
+                ),
               ).animate().fadeIn(delay: 600.ms),
               const SizedBox(height: 8),
-
               Text(level.title, style: StockDTheme.headingMedium),
               const SizedBox(height: 32),
-
-              // Score card
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -96,43 +99,71 @@ class ResultScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _ResultStat(
-                        label: 'SCORE',
-                        value: '$score / 20',
-                        color: world.accentColor),
+                      label: 'SCORE',
+                      value: '$score / 20',
+                      color: world.accentColor,
+                    ),
                     _ResultStat(
-                        label: 'ACCURACY',
-                        value: '$pct%',
-                        color: StockDTheme.info),
+                      label: 'ACCURACY',
+                      value: '$pct%',
+                      color: StockDTheme.info,
+                    ),
                     _ResultStat(
-                        label: 'XP EARNED',
-                        value: '+$_xpEarned',
-                        color: StockDTheme.gold),
+                      label: 'XP EARNED',
+                      value: '+$_xpEarned',
+                      color: StockDTheme.gold,
+                    ),
                   ],
                 ),
               ).animate().fadeIn(delay: 700.ms).slideY(begin: 0.1),
               const SizedBox(height: 32),
-
-              // Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: _OutlineButton(
-                      label: 'RETRY',
-                      onTap: () =>
-                          context.go('/lesson/$worldIndex/$levelIndex'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: _FilledButton(
-                      label: 'CONTINUE  →',
-                      color: world.accentColor,
-                      onTap: () => context.go('/world/$worldIndex'),
-                    ),
-                  ),
-                ],
-              ).animate().fadeIn(delay: 800.ms),
+              Consumer(
+                builder: (context, ref, _) {
+                  return Row(
+                    children: [
+                      if (!_isGameOver)
+                        Expanded(
+                          child: _OutlineButton(
+                            label: 'RETRY',
+                            onTap: () {
+                              final world = Curriculum.worlds[worldIndex];
+                              final level = world.levels[levelIndex];
+                              ref
+                                  .read(lessonProvider.notifier)
+                                  .startLesson(level.questions);
+                              ref.read(sageProvider.notifier).clear();
+                              context.go('/lesson/$worldIndex/$levelIndex');
+                            },
+                          ),
+                        )
+                      else
+                        Expanded(
+                          child: _FilledButton(
+                            label: 'BACK TO WORLDS',
+                            color: StockDTheme.danger,
+                            onTap: () {
+                              ref
+                                  .read(progressProvider.notifier)
+                                  .refillHearts();
+                              context.go('/world/$worldIndex');
+                            },
+                          ),
+                        ),
+                      if (!_isGameOver) ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: _FilledButton(
+                            label: 'CONTINUE →',
+                            color: world.accentColor,
+                            onTap: () => context.go('/world/$worldIndex'),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ).animate().fadeIn(delay: 800.ms);
+                },
+              ),
             ],
           ),
         ),
@@ -144,8 +175,11 @@ class ResultScreen extends StatelessWidget {
 class _ResultStat extends StatelessWidget {
   final String label, value;
   final Color color;
-  const _ResultStat(
-      {required this.label, required this.value, required this.color});
+  const _ResultStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -153,12 +187,14 @@ class _ResultStat extends StatelessWidget {
       children: [
         Text(label, style: StockDTheme.labelSmall),
         const SizedBox(height: 4),
-        Text(value,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: color,
-            )),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
       ],
     );
   }
@@ -191,8 +227,11 @@ class _FilledButton extends StatelessWidget {
   final String label;
   final Color color;
   final VoidCallback onTap;
-  const _FilledButton(
-      {required this.label, required this.color, required this.onTap});
+  const _FilledButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -205,8 +244,10 @@ class _FilledButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
         ),
         child: Center(
-          child: Text(label,
-              style: StockDTheme.labelSmall.copyWith(color: StockDTheme.bg)),
+          child: Text(
+            label,
+            style: StockDTheme.labelSmall.copyWith(color: StockDTheme.bg),
+          ),
         ),
       ),
     );
