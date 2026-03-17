@@ -176,8 +176,5 @@ Each world contains 5 levels of 20 questions each.
 - Historical stock data is **fetched locally from Yahoo Finance via yfinance**; **no raw data is redistributed**.  
 - **Usage restrictions:** This repository is not intended for commercial use, redistribution, or resale.
 
-## Data & Git Notes
-- GitHub rejects files over 100 MB; large files are excluded from the repo.  
-- To reproduce the full data pipeline or retrain SAGE, run the provided scripts (`ML/ml_config.py`, `ML/fetch_sp500.py`, `ML/prepare.py`, `ML/train_sage.py`).  
-- Data source: Yahoo Finance via yfinance.
+
 
