@@ -83,8 +83,6 @@ class QuestionCard extends StatelessWidget {
           } else {
             state = OptionState.dimmed;
           }
-        } else if (i == selectedIndex) {
-          state = OptionState.selected;
         }
 
         return Padding(
