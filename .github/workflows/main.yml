@@ -93,21 +93,21 @@ jobs:
           BUNDLE_DIR=build/linux/x64/bundle
           RPM_ROOT=$HOME/rpmbuild
 
-          mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
-          mkdir -p $RPM_ROOT/BUILD/stockd-1.0.0/usr/lib/stockd
-          mkdir -p $RPM_ROOT/BUILD/stockd-1.0.0/usr/bin
-          mkdir -p $RPM_ROOT/BUILD/stockd-1.0.0/usr/share/applications
-          mkdir -p $RPM_ROOT/BUILD/stockd-1.0.0/usr/share/icons/hicolor/256x256/apps
+          mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS,SRPMS}
+          mkdir -p $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/lib/stockd
+          mkdir -p $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/bin
+          mkdir -p $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/share/applications
+          mkdir -p $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/share/icons/hicolor/256x256/apps
 
-          cp -r $BUNDLE_DIR/* $RPM_ROOT/BUILD/stockd-1.0.0/usr/lib/stockd/
+          cp -r $BUNDLE_DIR/* $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/lib/stockd/
 
-          cat > $RPM_ROOT/BUILD/stockd-1.0.0/usr/bin/stockd << EOF
+          cat > $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/bin/stockd << EOF
           #!/bin/bash
           exec /usr/lib/stockd/stockd "\$@"
           EOF
-          chmod +x $RPM_ROOT/BUILD/stockd-1.0.0/usr/bin/stockd
+          chmod +x $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/bin/stockd
 
-          cat > $RPM_ROOT/BUILD/stockd-1.0.0/usr/share/applications/stockd.desktop << EOF
+          cat > $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/share/applications/stockd.desktop << EOF
           [Desktop Entry]
           Name=StockD
           Exec=/usr/bin/stockd
@@ -118,10 +118,11 @@ jobs:
 
           ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
           if [ -f "$ICON_SRC" ]; then
-            cp $ICON_SRC $RPM_ROOT/BUILD/stockd-1.0.0/usr/share/icons/hicolor/256x256/apps/stockd.png
+            cp $ICON_SRC $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/share/icons/hicolor/256x256/apps/stockd.png
           fi
 
           cat > $RPM_ROOT/SPECS/stockd.spec << EOF
+          %define _dbpath $HOME/.rpmdb
           Name:           stockd
           Version:        1.0.0
           Release:        1%{?dist}
@@ -133,7 +134,7 @@ jobs:
           StockD is a gamified stock market literacy app powered by an AI coach.
 
           %install
-          cp -r %{_builddir}/stockd-1.0.0/* %{buildroot}/
+          # files already staged in BUILDROOT
 
           %files
           /usr/bin/stockd
@@ -145,7 +146,11 @@ jobs:
           mkdir -p /usr/lib/stockd
           EOF
 
-          rpmbuild -bb $RPM_ROOT/SPECS/stockd.spec
+          rpmbuild -bb \
+            --define "_dbpath $HOME/.rpmdb" \
+            --define "_topdir $RPM_ROOT" \
+            $RPM_ROOT/SPECS/stockd.spec
+
           find $RPM_ROOT/RPMS -name "*.rpm" -exec cp {} stockd-linux-x64.rpm \;
           echo "Built stockd-linux-x64.rpm"
 
