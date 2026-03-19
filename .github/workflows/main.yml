@@ -27,7 +27,7 @@ jobs:
       - run: flutter pub get
 
       - name: Generate icons
-        run: dart run flutter_launcher_icons
+        run: /home/gautam/development/flutter/bin/dart run flutter_launcher_icons
 
       - name: Build Flutter Linux app
         run: flutter build linux --release
