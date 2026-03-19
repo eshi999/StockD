@@ -94,20 +94,44 @@ jobs:
           RPM_ROOT=$HOME/rpmbuild
 
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS,SRPMS}
-          mkdir -p $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/lib/stockd
-          mkdir -p $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/bin
-          mkdir -p $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/share/applications
-          mkdir -p $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/share/icons/hicolor/256x256/apps
 
-          cp -r $BUNDLE_DIR/* $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/lib/stockd/
+          # Create a tarball of the bundle for rpmbuild to use
+          mkdir -p /tmp/stockd-1.0.0
+          cp -r $BUNDLE_DIR/* /tmp/stockd-1.0.0/
+          tar -czf $RPM_ROOT/SOURCES/stockd-1.0.0.tar.gz -C /tmp stockd-1.0.0
 
-          cat > $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/bin/stockd << EOF
+          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
+
+          cat > $RPM_ROOT/SPECS/stockd.spec << SPECEOF
+          Name:           stockd
+          Version:        1.0.0
+          Release:        1
+          Summary:        Gamified stock market literacy app
+          License:        Proprietary
+          BuildArch:      x86_64
+          Source0:        stockd-1.0.0.tar.gz
+
+          %description
+          StockD is a gamified stock market literacy app powered by an AI coach.
+
+          %prep
+          %setup -q
+
+          %install
+          mkdir -p %{buildroot}/usr/lib/stockd
+          mkdir -p %{buildroot}/usr/bin
+          mkdir -p %{buildroot}/usr/share/applications
+          mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
+
+          cp -r * %{buildroot}/usr/lib/stockd/
+
+          cat > %{buildroot}/usr/bin/stockd << EOF
           #!/bin/bash
           exec /usr/lib/stockd/stockd "\$@"
           EOF
-          chmod +x $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/bin/stockd
+          chmod +x %{buildroot}/usr/bin/stockd
 
-          cat > $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/share/applications/stockd.desktop << EOF
+          cat > %{buildroot}/usr/share/applications/stockd.desktop << EOF
           [Desktop Entry]
           Name=StockD
           Exec=/usr/bin/stockd
@@ -116,35 +140,16 @@ jobs:
           Categories=Education;Finance;
           EOF
 
-          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
           if [ -f "$ICON_SRC" ]; then
-            cp $ICON_SRC $RPM_ROOT/BUILDROOT/stockd-1.0.0-1.x86_64/usr/share/icons/hicolor/256x256/apps/stockd.png
+            cp $ICON_SRC %{buildroot}/usr/share/icons/hicolor/256x256/apps/stockd.png
           fi
-
-          cat > $RPM_ROOT/SPECS/stockd.spec << EOF
-          %define _dbpath $HOME/.rpmdb
-          Name:           stockd
-          Version:        1.0.0
-          Release:        1%{?dist}
-          Summary:        Gamified stock market literacy app
-          License:        Proprietary
-          BuildArch:      x86_64
-
-          %description
-          StockD is a gamified stock market literacy app powered by an AI coach.
-
-          %install
-          # files already staged in BUILDROOT
 
           %files
           /usr/bin/stockd
           /usr/lib/stockd/
           /usr/share/applications/stockd.desktop
           /usr/share/icons/hicolor/256x256/apps/stockd.png
-
-          %pre
-          mkdir -p /usr/lib/stockd
-          EOF
+          SPECEOF
 
           rpmbuild -bb \
             --define "_dbpath $HOME/.rpmdb" \
