@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Flutter
+      - name: Verify Flutter
         run: |
           if ! command -v flutter &> /dev/null; then
             echo "Flutter not found on PATH"
@@ -27,7 +27,7 @@ jobs:
       - run: flutter pub get
 
       - name: Generate icons
-        run: flutter run flutter_launcher_icons
+        run: dart run flutter_launcher_icons
 
       - name: Build Flutter Linux app
         run: flutter build linux --release
