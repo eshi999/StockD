@@ -154,9 +154,7 @@ jobs:
           /usr/bin/stockd
           /usr/lib/stockd/
           /usr/share/applications/stockd.desktop
-          %if %{?_with_icon:1}%{!?_with_icon:0}
           /usr/share/icons/hicolor/256x256/apps/stockd.png
-          %endif
           SPECEOF
 
           rpmbuild -bb \
