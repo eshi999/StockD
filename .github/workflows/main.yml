@@ -90,19 +90,24 @@ jobs:
 
       - name: Build .rpm package
         run: |
-          BUNDLE_DIR=build/linux/x64/bundle
+          BUNDLE_DIR=$(pwd)/build/linux/x64/bundle
           RPM_ROOT=$HOME/rpmbuild
 
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS,SRPMS}
 
-          # Create a tarball of the bundle for rpmbuild to use
+          # Copy icon to SOURCES so spec can reference it with an absolute path
+          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
+          if [ -f "$ICON_SRC" ]; then
+            cp $ICON_SRC $RPM_ROOT/SOURCES/stockd.png
+          fi
+
+          # Create a tarball of the bundle
           mkdir -p /tmp/stockd-1.0.0
           cp -r $BUNDLE_DIR/* /tmp/stockd-1.0.0/
           tar -czf $RPM_ROOT/SOURCES/stockd-1.0.0.tar.gz -C /tmp stockd-1.0.0
 
-          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
-
           cat > $RPM_ROOT/SPECS/stockd.spec << SPECEOF
+          %global debug_package %{nil}
           Name:           stockd
           Version:        1.0.0
           Release:        1
@@ -110,6 +115,7 @@ jobs:
           License:        Proprietary
           BuildArch:      x86_64
           Source0:        stockd-1.0.0.tar.gz
+          Source1:        stockd.png
 
           %description
           StockD is a gamified stock market literacy app powered by an AI coach.
@@ -140,15 +146,17 @@ jobs:
           Categories=Education;Finance;
           EOF
 
-          if [ -f "$ICON_SRC" ]; then
-            cp $ICON_SRC %{buildroot}/usr/share/icons/hicolor/256x256/apps/stockd.png
+          if [ -f %{_sourcedir}/stockd.png ]; then
+            cp %{_sourcedir}/stockd.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/stockd.png
           fi
 
           %files
           /usr/bin/stockd
           /usr/lib/stockd/
           /usr/share/applications/stockd.desktop
+          %if %{?_with_icon:1}%{!?_with_icon:0}
           /usr/share/icons/hicolor/256x256/apps/stockd.png
+          %endif
           SPECEOF
 
           rpmbuild -bb \
