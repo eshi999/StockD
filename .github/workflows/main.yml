@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Flutter
+      - name: Verify Flutter
         run: |
           if ! command -v flutter &> /dev/null; then
             echo "Flutter not found on PATH"
@@ -27,7 +27,7 @@ jobs:
       - run: flutter pub get
 
       - name: Generate icons
-        run: flutter run flutter_launcher_icons
+        run: dart run flutter_launcher_icons
 
       - name: Build Flutter Linux app
         run: flutter build linux --release
@@ -85,29 +85,59 @@ jobs:
             cp $ICON_SRC $DEB_ROOT/usr/share/icons/hicolor/256x256/apps/stockd.png
           fi
 
-          dpkg-deb --build $DEB_ROOT stockd-linux-x64.deb
+          dpkg-deb --root-owner-group --build $DEB_ROOT stockd-linux-x64.deb
           echo "Built stockd-linux-x64.deb"
 
       - name: Build .rpm package
         run: |
-          BUNDLE_DIR=build/linux/x64/bundle
+          BUNDLE_DIR=$(pwd)/build/linux/x64/bundle
           RPM_ROOT=$HOME/rpmbuild
 
-          mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
-          mkdir -p $RPM_ROOT/BUILD/stockd-1.0.0/usr/lib/stockd
-          mkdir -p $RPM_ROOT/BUILD/stockd-1.0.0/usr/bin
-          mkdir -p $RPM_ROOT/BUILD/stockd-1.0.0/usr/share/applications
-          mkdir -p $RPM_ROOT/BUILD/stockd-1.0.0/usr/share/icons/hicolor/256x256/apps
+          mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS,SRPMS}
 
-          cp -r $BUNDLE_DIR/* $RPM_ROOT/BUILD/stockd-1.0.0/usr/lib/stockd/
+          # Copy icon to SOURCES so spec can reference it with an absolute path
+          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
+          if [ -f "$ICON_SRC" ]; then
+            cp $ICON_SRC $RPM_ROOT/SOURCES/stockd.png
+          fi
 
-          cat > $RPM_ROOT/BUILD/stockd-1.0.0/usr/bin/stockd << EOF
+          # Create a tarball of the bundle
+          mkdir -p /tmp/stockd-1.0.0
+          cp -r $BUNDLE_DIR/* /tmp/stockd-1.0.0/
+          tar -czf $RPM_ROOT/SOURCES/stockd-1.0.0.tar.gz -C /tmp stockd-1.0.0
+
+          cat > $RPM_ROOT/SPECS/stockd.spec << SPECEOF
+          %global debug_package %{nil}
+          Name:           stockd
+          Version:        1.0.0
+          Release:        1
+          Summary:        Gamified stock market literacy app
+          License:        Proprietary
+          BuildArch:      x86_64
+          Source0:        stockd-1.0.0.tar.gz
+          Source1:        stockd.png
+
+          %description
+          StockD is a gamified stock market literacy app powered by an AI coach.
+
+          %prep
+          %setup -q
+
+          %install
+          mkdir -p %{buildroot}/usr/lib/stockd
+          mkdir -p %{buildroot}/usr/bin
+          mkdir -p %{buildroot}/usr/share/applications
+          mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
+
+          cp -r * %{buildroot}/usr/lib/stockd/
+
+          cat > %{buildroot}/usr/bin/stockd << EOF
           #!/bin/bash
           exec /usr/lib/stockd/stockd "\$@"
           EOF
-          chmod +x $RPM_ROOT/BUILD/stockd-1.0.0/usr/bin/stockd
+          chmod +x %{buildroot}/usr/bin/stockd
 
-          cat > $RPM_ROOT/BUILD/stockd-1.0.0/usr/share/applications/stockd.desktop << EOF
+          cat > %{buildroot}/usr/share/applications/stockd.desktop << EOF
           [Desktop Entry]
           Name=StockD
           Exec=/usr/bin/stockd
@@ -116,36 +146,22 @@ jobs:
           Categories=Education;Finance;
           EOF
 
-          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
-          if [ -f "$ICON_SRC" ]; then
-            cp $ICON_SRC $RPM_ROOT/BUILD/stockd-1.0.0/usr/share/icons/hicolor/256x256/apps/stockd.png
+          if [ -f %{_sourcedir}/stockd.png ]; then
+            cp %{_sourcedir}/stockd.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/stockd.png
           fi
-
-          cat > $RPM_ROOT/SPECS/stockd.spec << EOF
-          Name:           stockd
-          Version:        1.0.0
-          Release:        1%{?dist}
-          Summary:        Gamified stock market literacy app
-          License:        Proprietary
-          BuildArch:      x86_64
-
-          %description
-          StockD is a gamified stock market literacy app powered by an AI coach.
-
-          %install
-          cp -r %{_builddir}/stockd-1.0.0/* %{buildroot}/
 
           %files
           /usr/bin/stockd
           /usr/lib/stockd/
           /usr/share/applications/stockd.desktop
           /usr/share/icons/hicolor/256x256/apps/stockd.png
+          SPECEOF
 
-          %pre
-          mkdir -p /usr/lib/stockd
-          EOF
+          rpmbuild -bb \
+            --define "_dbpath $HOME/.rpmdb" \
+            --define "_topdir $RPM_ROOT" \
+            $RPM_ROOT/SPECS/stockd.spec
 
-          rpmbuild -bb $RPM_ROOT/SPECS/stockd.spec
           find $RPM_ROOT/RPMS -name "*.rpm" -exec cp {} stockd-linux-x64.rpm \;
           echo "Built stockd-linux-x64.rpm"
 
