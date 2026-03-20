@@ -2,6 +2,15 @@ name: Build StockD
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Target platform"
+        required: true
+        default: linux
+        type: choice
+        options:
+          - linux
+          - windows
 
 jobs:
 
@@ -10,7 +19,8 @@ jobs:
   # ─────────────────────────────────────────
   build-linux:
     name: Linux x64
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux]
+    if: inputs.target == 'linux'
 
     steps:
       - uses: actions/checkout@v4
@@ -95,13 +105,11 @@ jobs:
 
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS,SRPMS}
 
-          # Copy icon to SOURCES so spec can reference it with an absolute path
           ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
           if [ -f "$ICON_SRC" ]; then
             cp $ICON_SRC $RPM_ROOT/SOURCES/stockd.png
           fi
 
-          # Create a tarball of the bundle
           mkdir -p /tmp/stockd-1.0.0
           cp -r $BUNDLE_DIR/* /tmp/stockd-1.0.0/
           tar -czf $RPM_ROOT/SOURCES/stockd-1.0.0.tar.gz -C /tmp stockd-1.0.0
@@ -176,3 +184,87 @@ jobs:
         with:
           name: stockd-linux-rpm
           path: stockd-linux-x64.rpm
+
+  # ─────────────────────────────────────────
+  # Windows x64 — NSIS installer
+  # ─────────────────────────────────────────
+  build-windows:
+    name: Windows x64
+    runs-on: [self-hosted, windows]
+    if: inputs.target == 'windows'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Flutter
+        shell: powershell
+        run: |
+          if (-Not (Get-Command flutter -ErrorAction SilentlyContinue)) {
+            Write-Error "Flutter not found on PATH"
+            exit 1
+          }
+          flutter --version
+
+      - name: Enable Windows desktop
+        shell: powershell
+        run: flutter config --enable-windows-desktop
+
+      - name: Get dependencies
+        shell: powershell
+        run: flutter pub get
+
+      - name: Generate icons
+        shell: powershell
+        run: dart run flutter_launcher_icons
+
+      - name: Build Flutter Windows app
+        shell: powershell
+        run: flutter build windows --release
+
+      - name: Copy Flutter Windows build
+        shell: powershell
+        run: |
+          $bundlePath = "build\windows\x64\bundle"
+          New-Item -ItemType Directory -Force -Path $bundlePath
+
+          $releaseDir = "build\windows\x64\runner\Release"
+          if (-Not (Test-Path $releaseDir)) {
+              Write-Error "Release directory not found: $releaseDir"
+              exit 1
+          }
+
+          Copy-Item -Path "$releaseDir\*" -Destination $bundlePath -Recurse -Force
+          Write-Host "Windows bundle prepared at $bundlePath"
+
+      - name: Build NSIS installer
+        shell: powershell
+        run: |
+          $iconSrc = "windows\runner\resources\app_icon.ico"
+          $iconDst = "build\windows\x64\bundle\app_icon.ico"
+          if (-Not (Test-Path $iconSrc)) {
+              Write-Error "App icon not found: $iconSrc"
+              exit 1
+          }
+          Copy-Item $iconSrc $iconDst -Force
+
+          @'
+          Name "StockD"
+          OutFile "stockd-windows-x64-setup.exe"
+          InstallDir "$PROGRAMFILES64\StockD"
+
+          Icon "build\windows\x64\bundle\app_icon.ico"
+
+          Section
+            SetOutPath "$INSTDIR"
+            File /r "build\windows\x64\bundle\*.*"
+            CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe" "" "$INSTDIR\app_icon.ico" 0
+          SectionEnd
+          '@ | Out-File -Encoding ASCII stockd.nsi
+
+          & "C:\Program Files (x86)\NSIS\makensis.exe" stockd.nsi
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stockd-windows-x64
+          path: stockd-windows-x64-setup.exe
