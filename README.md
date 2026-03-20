@@ -168,7 +168,7 @@ sudo rpm -i StockD.rpm
 | Reading the Tape | Charts, candlesticks, price action | Beginner |
 | Fundamentals | Earnings, valuation, balance sheets | Intermediate |
 
-Each world contains 5 levels of 20 questions each.
+Each world contains 5 levels of 10 questions each.
 
 ## Legal & Usage Notes
 - StockD is for **educational and research purposes only**.  
