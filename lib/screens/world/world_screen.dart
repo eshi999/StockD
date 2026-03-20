@@ -4,18 +4,44 @@ import 'package:go_router/go_router.dart';
 import '../../theme/app_theme.dart';
 import '../../models/curriculum.dart';
 import '../../models/models.dart';
+import '../../services/storage_service.dart';
 
-class WorldScreen extends StatelessWidget {
+class WorldScreen extends StatefulWidget {
   final int worldIndex;
   const WorldScreen({super.key, required this.worldIndex});
 
   @override
+  State<WorldScreen> createState() => _WorldScreenState();
+}
+
+class _WorldScreenState extends State<WorldScreen> {
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProgress();
+  }
+
+  Future<void> _loadProgress() async {
+    final worlds = Curriculum.worlds;
+    if (widget.worldIndex >= worlds.length) return;
+    final world = worlds[widget.worldIndex];
+    await StorageService().applyToLevels(world.levels);
+    if (mounted) setState(() => _loaded = true);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final worlds = Curriculum.worlds;
-    if (worldIndex >= worlds.length) {
+    if (widget.worldIndex >= worlds.length) {
       return const Center(child: Text('World not found'));
     }
-    final world = worlds[worldIndex];
+    final world = worlds[widget.worldIndex];
+
+    if (!_loaded) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
     return Column(
       children: [
@@ -117,16 +143,14 @@ class _LevelRowState extends State<_LevelRow> {
             border: Border.all(
               color: l.isCompleted
                   ? widget.world.accentColor.withValues(alpha: 0.4)
-                  : _hovered && !locked
-                      ? StockDTheme.border
-                      : StockDTheme.border,
+                  : StockDTheme.border,
             ),
           ),
           child: Opacity(
             opacity: locked ? 0.4 : 1.0,
             child: Row(
               children: [
-                // Level number
+                // Level number / status icon
                 Container(
                   width: 40,
                   height: 40,
@@ -156,7 +180,7 @@ class _LevelRowState extends State<_LevelRow> {
                   ),
                 ),
                 const SizedBox(width: 14),
-                // Info
+                // Title + subtitle
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,7 +191,7 @@ class _LevelRowState extends State<_LevelRow> {
                     ],
                   ),
                 ),
-                // Stars
+                // Stars (only when completed)
                 if (l.isCompleted)
                   Row(
                     children: List.generate(
@@ -181,7 +205,6 @@ class _LevelRowState extends State<_LevelRow> {
                       ),
                     ),
                   ),
-                // Questions count
                 const SizedBox(width: 12),
                 Text(
                   '${l.questions.length}Q',
