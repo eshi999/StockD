@@ -11,6 +11,7 @@ on:
         options:
           - linux
           - windows
+          - macos
 
 jobs:
 
@@ -184,6 +185,57 @@ jobs:
         with:
           name: stockd-linux-rpm
           path: stockd-linux-x64.rpm
+
+  # ─────────────────────────────────────────
+  # macOS arm64 — Apple Silicon build (macos-15) (THIS IS A PLACEHOLDER, UNTIL THE Self-hosted runner is set up for MacOS arm64; I do NOT own an Apple Silicon Mac, for temporary binary creation)
+  # ─────────────────────────────────────────
+  build-macos-arm64:
+    name: macOS arm64 (Apple Silicon)
+    runs-on: macos-15
+    if: inputs.target == 'all' || inputs.target == 'macos'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter config --enable-macos-desktop
+      - run: flutter pub get
+
+      - name: Generate icons
+        run: dart run flutter_launcher_icons
+
+      - name: Build Flutter macOS arm64
+        run: flutter build macos --release
+        env:
+          FLUTTER_XCODE_ARCHS: arm64
+
+      - name: Verify architecture
+        run: |
+          lipo -info build/macos/Build/Products/Release/StockD.app/Contents/MacOS/StockD
+
+      - name: Build arm64 .dmg
+        run: |
+          mkdir -p dmg_staging
+          cp -R build/macos/Build/Products/Release/StockD.app dmg_staging/StockD.app
+          ln -s /Applications dmg_staging/Applications
+
+          hdiutil create \
+            -volname "StockD" \
+            -srcfolder dmg_staging \
+            -ov \
+            -format UDZO \
+            stockd-macos-arm64.dmg
+
+          echo "Built stockd-macos-arm64.dmg"
+
+      - name: Upload arm64 .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stockd-macos-arm64
+          path: stockd-macos-arm64.dmg
 
   # ─────────────────────────────────────────
   # Windows x64 — NSIS installer
