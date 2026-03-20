@@ -40,7 +40,7 @@ jobs:
       - run: flutter pub get
 
       - name: Generate icons
-        run: flutter run flutter_launcher_icons
+        run: flutter pub run flutter_launcher_icons
 
       - name: Build Flutter Linux app
         run: flutter build linux --release
