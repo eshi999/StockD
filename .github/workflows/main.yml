@@ -187,7 +187,7 @@ jobs:
           path: stockd-linux-x64.rpm
 
   # ─────────────────────────────────────────
-  # macOS arm64 — Apple Silicon build (macos-15)
+  # macOS arm64 — Apple Silicon build (macos-15) (THIS IS A PLACEHOLDER, UNTIL THE Self-hosted runner is set up for MacOS arm64; I do NOT own an Apple Silicon Mac, for temporary binary creation)
   # ─────────────────────────────────────────
   build-macos-arm64:
     name: macOS arm64 (Apple Silicon)
