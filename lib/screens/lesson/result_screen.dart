@@ -7,6 +7,7 @@ import '../../models/curriculum.dart';
 import '../../providers/lesson_provider.dart';
 import '../../providers/progress_provider.dart';
 import '../../providers/sage_provider.dart';
+import '../../services/storage_service.dart';
 
 class ResultScreen extends ConsumerWidget {
   final int worldIndex;
@@ -21,26 +22,26 @@ class ResultScreen extends ConsumerWidget {
   });
 
   int get _stars {
-    if (score >= 19) return 3;
-    if (score >= 15) return 2;
-    if (score >= 10) return 1;
+    if (score >= 9) return 3;
+    if (score >= 7) return 2;
+    if (score >= 5) return 1;
     return 0;
   }
 
   int get _xpEarned {
-    if (score >= 19) return 150;
-    if (score >= 15) return 100;
-    if (score >= 10) return 50;
+    if (score >= 9) return 150;
+    if (score >= 7) return 100;
+    if (score >= 5) return 50;
     return 10;
   }
 
-  bool get _isGameOver => score < 10;
+  bool get _isGameOver => score < 5;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final world = Curriculum.worlds[worldIndex];
     final level = world.levels[levelIndex];
-    final pct = (score / 20 * 100).round();
+    final pct = (score / 10 * 100).round();
 
     return Scaffold(
       backgroundColor: StockDTheme.bg,
@@ -100,7 +101,7 @@ class ResultScreen extends ConsumerWidget {
                   children: [
                     _ResultStat(
                       label: 'SCORE',
-                      value: '$score / 20',
+                      value: '$score / 10',
                       color: world.accentColor,
                     ),
                     _ResultStat(
@@ -126,11 +127,11 @@ class ResultScreen extends ConsumerWidget {
                           child: _OutlineButton(
                             label: 'RETRY',
                             onTap: () {
-                              final world = Curriculum.worlds[worldIndex];
-                              final level = world.levels[levelIndex];
+                              final w = Curriculum.worlds[worldIndex];
+                              final l = w.levels[levelIndex];
                               ref
                                   .read(lessonProvider.notifier)
-                                  .startLesson(level.questions);
+                                  .startLesson(l.questions);
                               ref.read(sageProvider.notifier).clear();
                               context.go('/lesson/$worldIndex/$levelIndex');
                             },
@@ -156,7 +157,36 @@ class ResultScreen extends ConsumerWidget {
                           child: _FilledButton(
                             label: 'CONTINUE →',
                             color: world.accentColor,
-                            onTap: () => context.go('/world/$worldIndex'),
+                            onTap: () async {
+                              final w = Curriculum.worlds[worldIndex];
+                              final l = w.levels[levelIndex];
+
+                              // Save stars and score for this level
+                              await StorageService().saveLevelResult(
+                                l.id,
+                                _stars,
+                                score,
+                              );
+
+                              // Update level object in memory
+                              l.stars = _stars;
+                              l.bestScore = score;
+
+                              // Unlock the next level if it exists
+                              if (levelIndex + 1 < w.levels.length) {
+                                w.levels[levelIndex + 1].isUnlocked = true;
+                              }
+
+                              // Award XP bonus
+                              ref
+                                  .read(progressProvider.notifier)
+                                  .completeLevel(score: score);
+                              ref.read(lessonProvider.notifier).reset();
+
+                              if (context.mounted) {
+                                context.go('/world/$worldIndex');
+                              }
+                            },
                           ),
                         ),
                       ],

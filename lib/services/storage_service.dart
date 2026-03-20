@@ -48,11 +48,16 @@ class StorageService {
 
   // ── Apply saved results to curriculum ────────────────────────────────────
   Future<void> applyToLevels(List<Level> levels) async {
-    for (final level in levels) {
-      final result = await loadLevelResult(level.id);
-      level.stars = result.stars;
-      level.bestScore = result.score;
-      if (result.stars > 0) level.isUnlocked = true;
+    for (int i = 0; i < levels.length; i++) {  // ✅ index-based loop
+      final result = await loadLevelResult(levels[i].id);
+      levels[i].stars = result.stars;
+      levels[i].bestScore = result.score;
+      if (result.stars > 0) {
+        levels[i].isUnlocked = true;
+        if (i + 1 < levels.length) {            // ✅ also unlocks next level
+          levels[i + 1].isUnlocked = true;
+        }
+      }
     }
   }
 

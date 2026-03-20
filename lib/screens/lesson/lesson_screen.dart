@@ -26,6 +26,9 @@ class LessonScreen extends ConsumerStatefulWidget {
 }
 
 class _LessonScreenState extends ConsumerState<LessonScreen> {
+  // Tracks which world/level has been started so we never double-fire
+  String? _startedKey;
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +36,14 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
   }
 
   void _startLesson() {
+    if (!mounted) return;
+    final key = '${widget.worldIndex}_${widget.levelIndex}';
+    // Already started this exact level — do nothing
+    if (_startedKey == key) return;
+    _startedKey = key;
+
+    ref.read(lessonProvider.notifier).reset();
+
     final worlds = Curriculum.worlds;
     if (widget.worldIndex >= worlds.length) return;
     final world = worlds[widget.worldIndex];
@@ -57,20 +68,20 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
       );
     }
 
-    // Game Over: 0 lives left (NEW)
+    // Game over — no hearts left
     if (ref.read(progressProvider).hearts == 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.go('/result/${widget.worldIndex}/${widget.levelIndex}',
-            extra: lessonState.score);
+        context.go(
+          '/result/${widget.worldIndex}/${widget.levelIndex}',
+          extra: lessonState.score,
+        );
       });
       return const SizedBox.shrink();
     }
 
+    // Lesson complete — navigate to result
     if (lessonState.isComplete) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref
-            .read(progressProvider.notifier)
-            .completeLevel(score: lessonState.score);
         context.go(
           '/result/${widget.worldIndex}/${widget.levelIndex}',
           extra: lessonState.score,
@@ -226,13 +237,11 @@ class _WideLayout extends ConsumerWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Question side
         Expanded(
           flex: 3,
           child: _QuestionPane(lessonState: lessonState),
         ),
         const VerticalDivider(width: 1, color: StockDTheme.border),
-        // SAGE side
         Expanded(
           flex: 2,
           child: Padding(
@@ -291,8 +300,6 @@ class _QuestionPane extends ConsumerWidget {
             onAnswer: (i) => _handleAnswer(ref, i, question),
           ),
           const SizedBox(height: 24),
-
-          // Bottom bar — next button when answered correctly
           if (lessonState.answerState == AnswerState.correct)
             _NextButton(
               onTap: () => ref.read(lessonProvider.notifier).next(),
@@ -307,8 +314,6 @@ class _QuestionPane extends ConsumerWidget {
     ref.read(progressProvider.notifier).recordAnswer(
           correct: index == question.correctIndex,
         );
-
-    // Trigger SAGE on wrong answer
     if (index != question.correctIndex) {
       ref.read(sageProvider.notifier).explain(
             question: question,

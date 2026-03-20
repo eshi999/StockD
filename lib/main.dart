@@ -11,8 +11,11 @@ import 'screens/sage/sage_screen.dart';
 import 'screens/chat/chat_screen.dart';
 import 'screens/overworld/overworld_screen.dart';
 import 'providers/sage_provider.dart';
+import 'services/storage_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  //await StorageService().clearAll(); // temporary — remove after one run
   runApp(const ProviderScope(child: StockDApp()));
 }
 
