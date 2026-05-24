@@ -16,27 +16,21 @@ on:
 jobs:
 
   # ─────────────────────────────────────────
-  # Linux x64 — .deb + .rpm
+  # Linux x64 — .deb + .rpm (SELF-HOSTED)
   # ─────────────────────────────────────────
   build-linux:
     name: Linux x64
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     if: inputs.target == 'linux'
+    env:
+      PATH: /home/gautam/development/flutter/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux Build Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev rpm
+      # Assumes dependencies (clang, cmake, ninja, rpm) are already configured on your host system
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
+       Pentest check removed step since SDK is locally configured
       - name: Verify Flutter
         run: |
           if ! command -v flutter &> /dev/null; then
@@ -198,7 +192,7 @@ jobs:
           path: stockd-linux-x64.rpm
 
   # ─────────────────────────────────────────
-  # macOS arm64 — Apple Silicon build (macos-15)
+  # macOS arm64 — GITHUB RUNNER (macos-15)
   # ─────────────────────────────────────────
   build-macos-arm64:
     name: macOS arm64 (Apple Silicon)
@@ -249,21 +243,15 @@ jobs:
           path: stockd-macos-arm64.dmg
 
   # ─────────────────────────────────────────
-  # Windows x64 — NSIS installer
+  # Windows x64 — NSIS installer (SELF-HOSTED)
   # ─────────────────────────────────────────
   build-windows:
     name: Windows x64
-    runs-on: windows-latest
+    runs-on: [self-hosted, windows]
     if: inputs.target == 'windows'
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
 
       - name: Verify Flutter
         shell: powershell
@@ -330,8 +318,7 @@ jobs:
           SectionEnd
           '@ | Out-File -Encoding ASCII stockd.nsi
 
-          # On windows-latest runner images, makensis is already exposed directly via system PATH variables
-          makensis stockd.nsi
+          & "C:\Program Files (x86)\NSIS\makensis.exe" stockd.nsi
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
