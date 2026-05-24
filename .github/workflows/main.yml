@@ -29,8 +29,8 @@ jobs:
       - uses: actions/checkout@v4
 
       # Assumes dependencies (clang, cmake, ninja, rpm) are already configured on your host system
+      # Pentest check removed step since SDK is locally configured
 
-       Pentest check removed step since SDK is locally configured
       - name: Verify Flutter
         run: |
           if ! command -v flutter &> /dev/null; then
