@@ -28,8 +28,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Assumes dependencies (clang, cmake, ninja, rpm) are already configured on your host system
-      # Pentest check removed step since SDK is locally configured
+      # Assumes core desktop tools (clang, cmake, ninja) are on your host, 
+      # but explicitly ensures rpm/rpmbuild are present for the pipeline.
+      - name: Ensure RPM build tools are installed
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
 
       - name: Verify Flutter
         run: |
