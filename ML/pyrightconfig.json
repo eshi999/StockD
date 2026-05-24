@@ -1,0 +1,6 @@
+{
+  "reportGeneralTypeIssues": false,
+  "reportArgumentType": false,
+  "reportCallIssue": false,
+  "typeCheckingMode": "off",
+}

@@ -1,0 +1,14 @@
+# Install dependencies into your active Python environment.
+# Compatible with both standard Pip and Conda package managers.
+#
+# Pip:   python3 -m pip install -r ML/requirements.txt
+# Conda: conda install -c conda-forge --file ML/requirements.txt
+
+tensorflow>=2.15
+yfinance
+scikit-learn
+numpy
+fastapi
+uvicorn
+uvicorn-standard
+pydantic
