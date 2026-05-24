@@ -1,325 +1,340 @@
-Update this name: Build StockD
+name: Build StockD
 
 on:
-  workflow_dispatch:
-    inputs:
-      target:
-        description: "Target platform"
-        required: true
-        default: linux
-        type: choice
-        options:
-          - linux
-          - windows
-          - macos
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Target platform"
+        required: true
+        default: linux
+        type: choice
+        options:
+          - linux
+          - windows
+          - macos
 
 jobs:
 
-  # ─────────────────────────────────────────
-  # Linux x64 — .deb + .rpm
-  # ─────────────────────────────────────────
-  build-linux:
-    name: Linux x64
-    runs-on: [self-hosted, linux]
-    if: inputs.target == 'linux'
-    env:
-      PATH: /home/gautam/development/flutter/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  # ─────────────────────────────────────────
+  # Linux x64 — .deb + .rpm
+  # ─────────────────────────────────────────
+  build-linux:
+    name: Linux x64
+    runs-on: ubuntu-latest
+    if: inputs.target == 'linux'
 
-    steps:
-      - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Verify Flutter
-        run: |
-          if ! command -v flutter &> /dev/null; then
-            echo "Flutter not found on PATH"
-            exit 1
-          fi
-          flutter --version
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev rpm
 
-      - run: flutter config --enable-linux-desktop
-      - run: flutter pub get
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
-      - name: Generate icons
-        run: flutter pub run flutter_launcher_icons
+      - name: Verify Flutter
+        run: |
+          if ! command -v flutter &> /dev/null; then
+            echo "Flutter not found on PATH"
+            exit 1
+          fi
+          flutter --version
 
-      - name: Build Flutter Linux app
-        run: flutter build linux --release
+      - run: flutter config --enable-linux-desktop
+      - run: flutter pub get
 
-      - name: Prepare bundle
-        run: |
-          RELEASE_DIR=build/linux/x64/release/bundle
-          if [ ! -d "$RELEASE_DIR" ]; then
-            echo "Release directory not found: $RELEASE_DIR"
-            exit 1
-          fi
-          mkdir -p build/linux/x64/bundle
-          cp -r $RELEASE_DIR/* build/linux/x64/bundle/
-          echo "Linux bundle prepared"
+      - name: Generate icons
+        run: flutter pub run flutter_launcher_icons
 
-      - name: Build .deb package
-        run: |
-          BUNDLE_DIR=build/linux/x64/bundle
-          DEB_ROOT=build/linux/deb/stockd
+      - name: Build Flutter Linux app
+        run: flutter build linux --release
 
-          mkdir -p $DEB_ROOT/DEBIAN
-          mkdir -p $DEB_ROOT/usr/bin
-          mkdir -p $DEB_ROOT/usr/lib/stockd
-          mkdir -p $DEB_ROOT/usr/share/applications
-          mkdir -p $DEB_ROOT/usr/share/icons/hicolor/256x256/apps
+      - name: Prepare bundle
+        run: |
+          RELEASE_DIR=build/linux/x64/release/bundle
+          if [ ! -d "$RELEASE_DIR" ]; then
+            echo "Release directory not found: $RELEASE_DIR"
+            exit 1
+          fi
+          mkdir -p build/linux/x64/bundle
+          cp -r $RELEASE_DIR/* build/linux/x64/bundle/
+          echo "Linux bundle prepared"
 
-          cp -r $BUNDLE_DIR/* $DEB_ROOT/usr/lib/stockd/
+      - name: Build .deb package
+        run: |
+          BUNDLE_DIR=build/linux/x64/bundle
+          DEB_ROOT=build/linux/deb/stockd
 
-          cat > $DEB_ROOT/DEBIAN/control << EOF
-          Package: stockd
-          Version: 1.0.0
-          Architecture: amd64
-          Maintainer: StockD <noreply@stockd.app>
-          Description: Gamified stock market literacy app
-          Depends: libgtk-3-0, libblkid1, liblzma5
-          EOF
+          mkdir -p $DEB_ROOT/DEBIAN
+          mkdir -p $DEB_ROOT/usr/bin
+          mkdir -p $DEB_ROOT/usr/lib/stockd
+          mkdir -p $DEB_ROOT/usr/share/applications
+          mkdir -p $DEB_ROOT/usr/share/icons/hicolor/256x256/apps
 
-          cat > $DEB_ROOT/usr/bin/stockd << EOF
-          #!/bin/bash
-          exec /usr/lib/stockd/stockd "\$@"
-          EOF
-          chmod +x $DEB_ROOT/usr/bin/stockd
+          cp -r $BUNDLE_DIR/* $DEB_ROOT/usr/lib/stockd/
 
-          cat > $DEB_ROOT/usr/share/applications/stockd.desktop << EOF
-          [Desktop Entry]
-          Name=StockD
-          Exec=/usr/bin/stockd
-          Icon=stockd
-          Type=Application
-          Categories=Education;Finance;
-          EOF
+          cat > $DEB_ROOT/DEBIAN/control << EOF
+          Package: stockd
+          Version: 1.0.0
+          Architecture: amd64
+          Maintainer: StockD <noreply@stockd.app>
+          Description: Gamified stock market literacy app
+          Depends: libgtk-3-0, libblkid1, liblzma5
+          EOF
 
-          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
-          if [ -f "$ICON_SRC" ]; then
-            cp $ICON_SRC $DEB_ROOT/usr/share/icons/hicolor/256x256/apps/stockd.png
-          fi
+          cat > $DEB_ROOT/usr/bin/stockd << EOF
+          #!/bin/bash
+          exec /usr/lib/stockd/stockd "\$@"
+          EOF
+          chmod +x $DEB_ROOT/usr/bin/stockd
 
-          dpkg-deb --root-owner-group --build $DEB_ROOT stockd-linux-x64.deb
-          echo "Built stockd-linux-x64.deb"
+          cat > $DEB_ROOT/usr/share/applications/stockd.desktop << EOF
+          [Desktop Entry]
+          Name=StockD
+          Exec=/usr/bin/stockd
+          Icon=stockd
+          Type=Application
+          Categories=Education;Finance;
+          EOF
 
-      - name: Build .rpm package
-        run: |
-          BUNDLE_DIR=$(pwd)/build/linux/x64/bundle
-          RPM_ROOT=$HOME/rpmbuild
+          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
+          if [ -f "$ICON_SRC" ]; then
+            cp $ICON_SRC $DEB_ROOT/usr/share/icons/hicolor/256x256/apps/stockd.png
+          fi
 
-          mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS,SRPMS}
+          dpkg-deb --root-owner-group --build $DEB_ROOT stockd-linux-x64.deb
+          echo "Built stockd-linux-x64.deb"
 
-          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
-          if [ -f "$ICON_SRC" ]; then
-            cp $ICON_SRC $RPM_ROOT/SOURCES/stockd.png
-          fi
+      - name: Build .rpm package
+        run: |
+          BUNDLE_DIR=$(pwd)/build/linux/x64/bundle
+          RPM_ROOT=$HOME/rpmbuild
 
-          mkdir -p /tmp/stockd-1.0.0
-          cp -r $BUNDLE_DIR/* /tmp/stockd-1.0.0/
-          tar -czf $RPM_ROOT/SOURCES/stockd-1.0.0.tar.gz -C /tmp stockd-1.0.0
+          mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS,SRPMS}
 
-          cat > $RPM_ROOT/SPECS/stockd.spec << SPECEOF
-          %global debug_package %{nil}
-          Name:           stockd
-          Version:        1.0.0
-          Release:        1
-          Summary:        Gamified stock market literacy app
-          License:        Proprietary
-          BuildArch:      x86_64
-          Source0:        stockd-1.0.0.tar.gz
-          Source1:        stockd.png
+          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
+          if [ -f "$ICON_SRC" ]; then
+            cp $ICON_SRC $RPM_ROOT/SOURCES/stockd.png
+          fi
 
-          %description
-          StockD is a gamified stock market literacy app powered by an AI coach.
+          mkdir -p /tmp/stockd-1.0.0
+          cp -r $BUNDLE_DIR/* /tmp/stockd-1.0.0/
+          tar -czf $RPM_ROOT/SOURCES/stockd-1.0.0.tar.gz -C /tmp stockd-1.0.0
 
-          %prep
-          %setup -q
+          cat > $RPM_ROOT/SPECS/stockd.spec << SPECEOF
+          %global debug_package %{nil}
+          Name:           stockd
+          Version:        1.0.0
+          Release:        1
+          Summary:        Gamified stock market literacy app
+          License:        Proprietary
+          BuildArch:      x86_64
+          Source0:        stockd-1.0.0.tar.gz
+          Source1:        stockd.png
 
-          %install
-          mkdir -p %{buildroot}/usr/lib/stockd
-          mkdir -p %{buildroot}/usr/bin
-          mkdir -p %{buildroot}/usr/share/applications
-          mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
+          %description
+          StockD is a gamified stock market literacy app powered by an AI coach.
 
-          cp -r * %{buildroot}/usr/lib/stockd/
+          %prep
+          %setup -q
 
-          cat > %{buildroot}/usr/bin/stockd << EOF
-          #!/bin/bash
-          exec /usr/lib/stockd/stockd "\$@"
-          EOF
-          chmod +x %{buildroot}/usr/bin/stockd
+          %install
+          mkdir -p %{buildroot}/usr/lib/stockd
+          mkdir -p %{buildroot}/usr/bin
+          mkdir -p %{buildroot}/usr/share/applications
+          mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
 
-          cat > %{buildroot}/usr/share/applications/stockd.desktop << EOF
-          [Desktop Entry]
-          Name=StockD
-          Exec=/usr/bin/stockd
-          Icon=stockd
-          Type=Application
-          Categories=Education;Finance;
-          EOF
+          cp -r * %{buildroot}/usr/lib/stockd/
 
-          if [ -f %{_sourcedir}/stockd.png ]; then
-            cp %{_sourcedir}/stockd.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/stockd.png
-          fi
+          cat > %{buildroot}/usr/bin/stockd << EOF
+          #!/bin/bash
+          exec /usr/lib/stockd/stockd "\$@"
+          EOF
+          chmod +x %{buildroot}/usr/bin/stockd
 
-          %files
-          /usr/bin/stockd
-          /usr/lib/stockd/
-          /usr/share/applications/stockd.desktop
-          /usr/share/icons/hicolor/256x256/apps/stockd.png
-          SPECEOF
+          cat > %{buildroot}/usr/share/applications/stockd.desktop << EOF
+          [Desktop Entry]
+          Name=StockD
+          Exec=/usr/bin/stockd
+          Icon=stockd
+          Type=Application
+          Categories=Education;Finance;
+          EOF
 
-          rpmbuild -bb \
-            --define "_dbpath $HOME/.rpmdb" \
-            --define "_topdir $RPM_ROOT" \
-            $RPM_ROOT/SPECS/stockd.spec
+          if [ -f %{_sourcedir}/stockd.png ]; then
+            cp %{_sourcedir}/stockd.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/stockd.png
+          fi
 
-          find $RPM_ROOT/RPMS -name "*.rpm" -exec cp {} stockd-linux-x64.rpm \;
-          echo "Built stockd-linux-x64.rpm"
+          %files
+          /usr/bin/stockd
+          /usr/lib/stockd/
+          /usr/share/applications/stockd.desktop
+          /usr/share/icons/hicolor/256x256/apps/stockd.png
+          SPECEOF
 
-      - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stockd-linux-deb
-          path: stockd-linux-x64.deb
+          rpmbuild -bb \
+            --define "_dbpath $HOME/.rpmdb" \
+            --define "_topdir $RPM_ROOT" \
+            $RPM_ROOT/SPECS/stockd.spec
 
-      - name: Upload .rpm artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stockd-linux-rpm
-          path: stockd-linux-x64.rpm
+          find $RPM_ROOT/RPMS -name "*.rpm" -exec cp {} stockd-linux-x64.rpm \;
+          echo "Built stockd-linux-x64.rpm"
 
-  # ─────────────────────────────────────────
-  # macOS arm64 — Apple Silicon build (macos-15)
-  # ─────────────────────────────────────────
-  build-macos-arm64:
-    name: macOS arm64 (Apple Silicon)
-    runs-on: macos-15
-    if: inputs.target == 'macos'
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stockd-linux-deb
+          path: stockd-linux-x64.deb
 
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
+      - name: Upload .rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stockd-linux-rpm
+          path: stockd-linux-x64.rpm
 
-      - run: flutter config --enable-macos-desktop
-      - run: flutter pub get
+  # ─────────────────────────────────────────
+  # macOS arm64 — Apple Silicon build (macos-15)
+  # ─────────────────────────────────────────
+  build-macos-arm64:
+    name: macOS arm64 (Apple Silicon)
+    runs-on: macos-15
+    if: inputs.target == 'macos'
 
-      - name: Generate icons
-        run: flutter pub run flutter_launcher_icons
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
-      - name: Build Flutter macOS arm64
-        run: flutter build macos --release
-        env:
-          FLUTTER_XCODE_ARCHS: arm64
+      - run: flutter config --enable-macos-desktop
+      - run: flutter pub get
 
-      - name: Verify architecture
-        run: |
-          lipo -info build/macos/Build/Products/Release/StockD.app/Contents/MacOS/StockD
+      - name: Generate icons
+        run: flutter pub run flutter_launcher_icons
 
-      - name: Build arm64 .dmg
-        run: |
-          mkdir -p dmg_staging
-          cp -R build/macos/Build/Products/Release/StockD.app dmg_staging/StockD.app
-          ln -s /Applications dmg_staging/Applications
+      - name: Build Flutter macOS arm64
+        run: flutter build macos --release
+        env:
+          FLUTTER_XCODE_ARCHS: arm64
 
-          hdiutil create \
-            -volname "StockD" \
-            -srcfolder dmg_staging \
-            -ov \
-            -format UDZO \
-            stockd-macos-arm64.dmg
+      - name: Verify architecture
+        run: |
+          lipo -info build/macos/Build/Products/Release/StockD.app/Contents/MacOS/StockD
 
-          echo "Built stockd-macos-arm64.dmg"
+      - name: Build arm64 .dmg
+        run: |
+          mkdir -p dmg_staging
+          cp -R build/macos/Build/Products/Release/StockD.app dmg_staging/StockD.app
+          ln -s /Applications dmg_staging/Applications
 
-      - name: Upload arm64 .dmg artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stockd-macos-arm64
-          path: stockd-macos-arm64.dmg
+          hdiutil create \
+            -volname "StockD" \
+            -srcfolder dmg_staging \
+            -ov \
+            -format UDZO \
+            stockd-macos-arm64.dmg
 
-  # ─────────────────────────────────────────
-  # Windows x64 — NSIS installer
-  # ─────────────────────────────────────────
-  build-windows:
-    name: Windows x64
-    runs-on: [self-hosted, windows]
-    if: inputs.target == 'windows'
+          echo "Built stockd-macos-arm64.dmg"
 
-    steps:
-      - uses: actions/checkout@v4
+      - name: Upload arm64 .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stockd-macos-arm64
+          path: stockd-macos-arm64.dmg
 
-      - name: Verify Flutter
-        shell: powershell
-        run: |
-          if (-Not (Get-Command flutter -ErrorAction SilentlyContinue)) {
-            Write-Error "Flutter not found on PATH"
-            exit 1
-          }
-          flutter --version
+  # ─────────────────────────────────────────
+  # Windows x64 — NSIS installer
+  # ─────────────────────────────────────────
+  build-windows:
+    name: Windows x64
+    runs-on: windows-latest
+    if: inputs.target == 'windows'
 
-      - name: Enable Windows desktop
-        shell: powershell
-        run: flutter config --enable-windows-desktop
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Get dependencies
-        shell: powershell
-        run: flutter pub get
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
-      - name: Generate icons
-        shell: powershell
-        run: flutter pub run flutter_launcher_icons
+      - name: Verify Flutter
+        shell: powershell
+        run: |
+          if (-Not (Get-Command flutter -ErrorAction SilentlyContinue)) {
+            Write-Error "Flutter not found on PATH"
+            exit 1
+          }
+          flutter --version
 
-      - name: Build Flutter Windows app
-        shell: powershell
-        run: flutter build windows --release
+      - name: Enable Windows desktop
+        shell: powershell
+        run: flutter config --enable-windows-desktop
 
-      - name: Copy Flutter Windows build
-        shell: powershell
-        run: |
-          $bundlePath = "build\windows\x64\bundle"
-          New-Item -ItemType Directory -Force -Path $bundlePath
+      - name: Get dependencies
+        shell: powershell
+        run: flutter pub get
 
-          $releaseDir = "build\windows\x64\runner\Release"
-          if (-Not (Test-Path $releaseDir)) {
-              Write-Error "Release directory not found: $releaseDir"
-              exit 1
-          }
+      - name: Generate icons
+        shell: powershell
+        run: flutter pub run flutter_launcher_icons
 
-          Copy-Item -Path "$releaseDir\*" -Destination $bundlePath -Recurse -Force
-          Write-Host "Windows bundle prepared at $bundlePath"
+      - name: Build Flutter Windows app
+        shell: powershell
+        run: flutter build windows --release
 
-      - name: Build NSIS installer
-        shell: powershell
-        run: |
-          $iconSrc = "windows\runner\resources\app_icon.ico"
-          $iconDst = "build\windows\x64\bundle\app_icon.ico"
-          if (-Not (Test-Path $iconSrc)) {
-              Write-Error "App icon not found: $iconSrc"
-              exit 1
-          }
-          Copy-Item $iconSrc $iconDst -Force
+      - name: Copy Flutter Windows build
+        shell: powershell
+        run: |
+          $bundlePath = "build\windows\x64\bundle"
+          New-Item -ItemType Directory -Force -Path $bundlePath
 
-          @'
-          Name "StockD"
-          OutFile "stockd-windows-x64-setup.exe"
-          InstallDir "$PROGRAMFILES64\StockD"
+          $releaseDir = "build\windows\x64\runner\Release"
+          if (-Not (Test-Path $releaseDir)) {
+              Write-Error "Release directory not found: $releaseDir"
+              exit 1
+          }
 
-          Icon "build\windows\x64\bundle\app_icon.ico"
+          Copy-Item -Path "$releaseDir\*" -Destination $bundlePath -Recurse -Force
+          Write-Host "Windows bundle prepared at $bundlePath"
 
-          Section
-            SetOutPath "$INSTDIR"
-            File /r "build\windows\x64\bundle\*.*"
-            CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe" "" "$INSTDIR\app_icon.ico" 0
-          SectionEnd
-          '@ | Out-File -Encoding ASCII stockd.nsi
+      - name: Build NSIS installer
+        shell: powershell
+        run: |
+          $iconSrc = "windows\runner\resources\app_icon.ico"
+          $iconDst = "build\windows\x64\bundle\app_icon.ico"
+          if (-Not (Test-Path $iconSrc)) {
+              Write-Error "App icon not found: $iconSrc"
+              exit 1
+          }
+          Copy-Item $iconSrc $iconDst -Force
 
-          & "C:\Program Files (x86)\NSIS\makensis.exe" stockd.nsi
+          @'
+          Name "StockD"
+          OutFile "stockd-windows-x64-setup.exe"
+          InstallDir "$PROGRAMFILES64\StockD"
 
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stockd-windows-x64
-          path: stockd-windows-x64-setup.exe
-such that it uses github's runners for each type of os
+          Icon "build\windows\x64\bundle\app_icon.ico"
+
+          Section
+            SetOutPath "$INSTDIR"
+            File /r "build\windows\x64\bundle\*.*"
+            CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe" "" "$INSTDIR\app_icon.ico" 0
+          SectionEnd
+          '@ | Out-File -Encoding ASCII stockd.nsi
+
+          # On windows-latest runner images, makensis is already exposed directly via system PATH variables
+          makensis stockd.nsi
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stockd-windows-x64
+          path: stockd-windows-x64-setup.exe
