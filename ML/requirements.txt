@@ -1,0 +1,10 @@
+# Install into the same Python used by the Qt app (the one CMake found).
+# From project root: python3 -m pip install -r ML/requirements.txt
+# Or create a venv, install this, then point CMake to that venv's Python.
+tensorflow>=2.15
+yfinance
+scikit-learn
+numpy
+fastapi
+uvicorn[standard]
+pydantic

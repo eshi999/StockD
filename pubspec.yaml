@@ -1,0 +1,43 @@
+name: StockD
+description: StockD — Learn the Stock Market with SAGE AI
+publish_to: "none"
+version: 1.1.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.3.1
+  go_router: ^17.1.0
+  fl_chart: ^1.1.1
+  flutter_animate: ^4.5.0
+  http: ^1.2.1
+  shared_preferences: ^2.2.3
+  gap: ^3.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.0
+
+flutter_launcher_icons:
+  android: false
+  ios: false
+  macos:
+    generate: true
+    image_path: "assets/images/StockD.png"
+  linux:
+    generate: true
+    image_path: "assets/images/StockD.png"
+  windows:
+    generate: true
+    image_path: "assets/images/StockD.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

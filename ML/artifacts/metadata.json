@@ -1,0 +1,10 @@
+{
+  "rows": 1151307,
+  "tickers": 585,
+  "date_min": "2016-01-04 00:00:00",
+  "date_max": "2026-03-05 00:00:00",
+  "baseline_up_rate": 0.5445263513554595,
+  "window_size": 30,
+  "horizon_days": 5,
+  "note": "Data appears pre-scaled; using IdentityScaler to keep pipeline consistent."
+}
