@@ -1,73 +1,199 @@
 # StockD
-Gamified stock market literacy — powered by a real AI coach.
 
-StockD is a desktop-first Flutter app that teaches stock market fundamentals through Duolingo-style progression, anchored to **historical S&P 500 data**. It is **not a trading tool, not a prediction engine, and not financial advice.**
+**Gamified stock market literacy — powered by a real AI coach.**
 
-> "SAGE explains. The user decides."
+StockD is a desktop-first Flutter application that teaches stock market fundamentals through Duolingo-style progression, powered by a locally running AI coaching system called **SAGE**.
 
-## Overview
-StockD combines gamified lesson progression with an AI coaching layer (SAGE) that explains concepts using **historical S&P 500 data**. Users progress through worlds and levels, answering multiple-choice questions. When they get something wrong, SAGE explains why using real charts and market data — **educational only**.
+It is built around **historical S&P 500 market data** and is designed strictly for **education and research** — **not trading, not prediction, and not financial advice.**
 
-The Flutter app lives in `lib/` and is organized into models, providers, services, screens, and widgets. The Python ML backend (FastAPI + TensorFlow) lives in `ML/`, with data scripts and model artifacts kept separate from source.
+> **"SAGE explains. The user decides."**
 
-## Features
-- Duolingo-style progression — Worlds → Levels → 10 questions each, with XP, streaks, and hearts
-- SAGE AI Coach — Explains wrong answers with real S&P 500 context and interactive charts
-- SAGE Chat — Ask any stock market question at any time via an educational chatbot
-- Real market data — Lessons reference actual tickers, RSI, SMA, volatility, and price history
-- Desktop-first — Built with Flutter for Linux, macOS, and Windows
-- No financial advice — Every AI response includes an explicit educational disclaimer
+---
 
-## Tech Stack
+# Overview
 
-| Layer | Technology |
-|-------|-----------|
-| UI | Flutter 3.x (Dart) |
-| State Management | Riverpod 3.x |
-| Navigation | GoRouter 17.x |
-| Charts | fl_chart |
-| Animations | flutter_animate |
-| ML Backend | FastAPI + TensorFlow 2.21 |
-| Market Data | yfinance + local S&P 500 CSVs |
+StockD combines:
 
-## Getting Started
+* Gamified lesson progression
+* Real historical market context
+* Interactive educational explanations
+* A locally hosted AI sidecar backend
 
-### Desktop Installers
-StockD provides ready-to-use installers for multiple platforms:
-- Windows: `.exe`
-- macOS: `StockD.app`
-- Linux: `.rpm` and `.deb`
+Users advance through worlds and levels by answering multiple-choice questions covering market fundamentals, technical indicators, and financial literacy concepts.
 
-Download the release for your platform from the [releases page](https://github.com/eshi999/StockD/releases) and follow the platform-specific instructions below.
+When a question is answered incorrectly, **SAGE** analyzes the context using historical market data and explains:
 
-### Flutter UI (Optional Build)
-If you prefer to build from source (e.g., for development or contributions):
+* Why the answer was incorrect
+* What the indicator or concept means
+* How the market behaved historically in similar conditions
+
+All explanations are educational-only and never provide buy/sell recommendations.
+
+---
+
+# Architecture
+
+StockD uses a **desktop sidecar architecture**:
+
+| Component        | Stack                             |
+| ---------------- | --------------------------------- |
+| Desktop UI       | Flutter 3.x + Dart                |
+| State Management | Riverpod 3.x                      |
+| Navigation       | GoRouter 17.x                     |
+| Charts           | fl_chart                          |
+| Animation        | flutter_animate                   |
+| AI Backend       | FastAPI + TensorFlow 2.21         |
+| Market Data      | yfinance + local S&P 500 datasets |
+
+## SAGE Integration
+
+SAGE is deeply integrated into the desktop runtime rather than launched manually.
+
+### Integrated Backend Lifecycle
+
+The Flutter desktop application automatically:
+
+* Starts the FastAPI backend via `Process.start`
+* Launches SAGE inside a dedicated Conda environment
+* Attaches TensorFlow to available GPU hardware
+* Monitors backend readiness before enabling UI requests
+
+### Asynchronous Health Synchronization
+
+StockD continuously polls the local backend during startup to ensure:
+
+* TensorFlow has fully initialized
+* GPU memory allocation is complete
+* Model artifacts are loaded
+* The API is ready before requests are sent
+
+This prevents frontend race conditions during cold starts.
+
+### Cross-Language Runtime Communication
+
+Flutter and Python communicate through local JSON APIs:
+
+* Dart sends lesson context and market metadata
+* Python calculates indicators and explanation context
+* SAGE streams educational responses back into the UI
+
+### Environment Isolation
+
+The entire ML stack executes inside an isolated Conda environment, preventing conflicts with:
+
+* System Python packages
+* Native Linux libraries
+* TensorFlow CUDA dependencies
+
+This keeps the host development environment stable and reproducible.
+
+---
+
+# Features
+
+* Duolingo-style progression system
+* XP, streaks, hearts, and level progression
+* AI-powered educational coaching
+* Interactive SAGE chatbot
+* Historical S&P 500 explanations
+* RSI, SMA, volatility, and trend analysis
+* Native desktop experience
+* Linux, macOS, and Windows support
+* Fully local backend execution
+* GPU acceleration support
+* Explicit educational disclaimers in all AI responses
+
+---
+
+# Repository Structure
+
+```text
+lib/                Flutter application source
+  models/
+  providers/
+  screens/
+  services/
+  widgets/
+
+ML/                 Python AI backend
+  artifacts/        Trained model artifacts
+  historical/       Generated market datasets
+  main.py           FastAPI entrypoint
+  train_sage.py     Training pipeline
+  fetch_sp500.py    Historical data fetcher
+```
+
+---
+
+# Getting Started
+
+## Prebuilt Desktop Installers
+
+StockD ships with platform-native installers:
+
+| Platform | Package         |
+| -------- | --------------- |
+| Windows  | `.exe`          |
+| macOS    | `StockD.app`    |
+| Linux    | `.deb` / `.rpm` |
+
+Download the latest release from the GitHub Releases page.
+
+---
+
+# Running From Source
+
+## 1. Clone Repository
 
 ```bash
 git clone https://github.com/eshi999/StockD.git
 cd StockD
-flutter pub get
-flutter run -d <your-desktop-target>
 ```
 
-**Note:** The UI expects the SAGE backend to be running at `http://localhost:8000`.
+---
 
-### SAGE ML Backend
-**Prerequisites:** Python 3.12, internet connection (for initial data fetch)
+# Flutter Frontend Setup
 
-1. Install dependencies:
+```bash
+flutter pub get
+flutter run -d <desktop-target>
+```
+
+Supported targets:
+
+* linux
+* windows
+* macos
+
+---
+
+# SAGE Backend Setup
+
+## Prerequisites
+
+* Python 3.12
+* Conda or Miniconda
+* Internet connection (initial historical data fetch)
+
+---
+
+## Install Dependencies
 
 ```bash
 pip install -r ML/requirements.txt
 ```
 
-2. Configure ML settings:
+---
+
+## Configure ML Environment
 
 ```bash
 python3.12 ML/ml_config.py
 ```
 
-3. Optional: Fetch historical data and prepare for training (if you want to retrain SAGE):
+---
+
+## Optional: Fetch Data + Retrain SAGE
 
 ```bash
 python3.12 ML/fetch_sp500.py
@@ -75,123 +201,225 @@ python3.12 ML/prepare.py
 python3.12 ML/train_sage.py
 ```
 
-This will:
-- Create `ML/historical/` with per-ticker CSVs.
-- Prepare SAGE training data.
-- Train the model (optional; pre-trained artifacts are included in `ML/artifacts/`).
+This process:
 
-4. Start the backend:
+* Downloads historical S&P 500 datasets
+* Generates training features
+* Prepares educational explanation context
+* Retrains the TensorFlow model
+
+Pretrained artifacts are already included in:
+
+```text
+ML/artifacts/
+```
+
+---
+
+## Start Backend Manually (Optional)
+
+StockD normally launches SAGE automatically.
+
+For standalone backend development:
 
 ```bash
 cd ML
 python3.12 -m uvicorn main:app --port 8000 --reload
 ```
 
-5. Verify:
+---
+
+# Verify Backend
+
+## Linux / macOS
 
 ```bash
-# Linux / macOS
 curl http://localhost:8000/health
+```
 
-# Windows (PowerShell)
+## Windows PowerShell
+
+```powershell
 Invoke-WebRequest http://localhost:8000/health
 ```
 
-Expected output:
+Expected response:
 
 ```json
-{ "status": "ok", "model_loaded": true }
+{
+  "status": "ok",
+  "model_loaded": true
+}
 ```
 
-6. Test SAGE:
+---
+
+# Test SAGE
 
 ```bash
 curl -X POST http://localhost:8000/sage/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "What is RSI?", "history": []}'
+  -d '{"message":"What is RSI?","history":[]}'
 ```
 
-## Data Setup
-StockD relies on **historical S&P 500 data** to reproduce SAGE explanations. **No raw data is distributed**; it is generated locally.
+---
 
-To fetch data and optionally retrain SAGE, run:
+# Data Pipeline
+
+StockD relies entirely on **historical market data**.
+
+No raw stock datasets are redistributed.
+
+Data is fetched locally through Yahoo Finance using `yfinance`.
+
+To regenerate datasets:
 
 ```bash
 python3.12 ML/ml_config.py
 python3.12 ML/fetch_sp500.py
-python3.12 ML/prepare.py  # optional if retraining
-python3.12 ML/train_sage.py  # optional if retraining
 ```
 
-**Disclaimer:** Historical stock data is provided by Yahoo Finance via yfinance. Data is fetched locally; no raw data is redistributed. StockD is an educational tool and does not provide financial advice.
+Optional retraining:
 
-## Installation Notes
+```bash
+python3.12 ML/prepare.py
+python3.12 ML/train_sage.py
+```
 
-### macOS
-The macOS release is `StockD.app` — a self-contained application bundle.
+---
 
-**To install:**
-1. Download `StockD.app` from the releases page.
-2. Move `StockD.app` into your **Applications** folder:
-   - Open Finder, go to **Applications**, and drag `StockD.app` in.
-   - Or via Terminal: `mv ~/Downloads/StockD.app /Applications/`
-3. Launch StockD from **Applications** or Spotlight.
+# Installation Notes
 
-**Gatekeeper — first launch:**
+## macOS
 
-Because StockD is not code-signed with an Apple Developer certificate, macOS will block it on first open with the message *"StockD.app cannot be opened because it is from an unidentified developer."*
+The macOS release is distributed as:
 
-To allow it:
-1. Open **System Settings → Privacy & Security**.
-2. Scroll down to the **Security** section — you will see a message that StockD was blocked.
-3. Click **Open Anyway**.
-4. Enter your password when prompted.
-5. Click **Open** on the confirmation dialog.
+```text
+StockD.app
+```
 
-StockD will open normally on all subsequent launches.
+Move the application into:
 
-Alternatively, you can bypass Gatekeeper from Terminal before moving the app:
+```text
+/Applications
+```
+
+### Gatekeeper Warning
+
+Because StockD is not currently signed with an Apple Developer certificate, macOS may block the first launch.
+
+To allow execution:
+
+1. Open:
+
+   * System Settings → Privacy & Security
+2. Scroll to:
+
+   * Security
+3. Click:
+
+   * Open Anyway
+
+Alternative terminal bypass:
+
 ```bash
 xattr -cr ~/Downloads/StockD.app
 ```
-Then move it to Applications and open normally.
 
-### Windows
-- Windows SmartScreen may show "Windows protected your PC"
-- Click **More info → Run anyway**
-- Click **Yes** at the UAC prompt
+---
 
-### Linux
-Install via package manager:
+## Windows
+
+Windows SmartScreen may display:
+
+```text
+Windows protected your PC
+```
+
+Choose:
+
+```text
+More info → Run anyway
+```
+
+---
+
+## Linux
+
+### Debian / Ubuntu
 
 ```bash
-# Debian / Ubuntu
 sudo dpkg -i stockd-linux-x64.deb
 sudo apt-get install -f
+```
 
-# Fedora / RHEL
+### Fedora / RHEL
+
+```bash
 sudo rpm -i stockd-linux-x64.rpm
 ```
 
-## SAGE Philosophy
-- SAGE is a **coach, not an autopilot**.
-- Explains concepts using plain language.
-- Anchors lessons to real S&P 500 tickers and historical price data.
-- Surfaces indicators (RSI, SMA, volatility) **as educational context only**.
-- Never gives buy/sell advice or predictions.
+---
 
-## Curriculum
+# SAGE Philosophy
 
-| World | Topic | Difficulty |
-|-------|-------|-----------|
-| Market Basics | Stocks, exchanges, indices | Beginner |
-| Reading the Tape | Charts, candlesticks, price action | Beginner |
-| Fundamentals | Earnings, valuation, balance sheets | Intermediate |
+SAGE is intentionally designed as:
 
-Each world contains 5 levels of 10 questions each.
+* A coach
+* A teacher
+* A contextual explainer
 
-## Legal & Usage Notes
-- StockD is for **educational and research purposes only**.
-- **No financial advice** is given. Always consult a licensed professional before making investment decisions.
-- Historical stock data is **fetched locally from Yahoo Finance via yfinance**; **no raw data is redistributed**.
-- **Usage restrictions:** This repository is not intended for commercial use, redistribution, or resale.
+SAGE is **not**:
+
+* A trading bot
+* A prediction engine
+* A financial advisor
+* An automated investing system
+
+The AI exists solely to improve financial literacy through historical examples and contextual explanations.
+
+---
+
+# Curriculum
+
+| World            | Topic                               | Difficulty   |
+| ---------------- | ----------------------------------- | ------------ |
+| Market Basics    | Stocks, exchanges, indices          | Beginner     |
+| Reading the Tape | Charts, candlesticks, price action  | Beginner     |
+| Fundamentals     | Earnings, valuation, balance sheets | Intermediate |
+
+Each world contains:
+
+* 5 levels
+* 10 questions per level
+
+Additional worlds are planned.
+
+---
+
+# Legal & Usage Notes
+
+* StockD is for educational and research purposes only.
+* No financial advice is provided.
+* Always consult a licensed financial professional before making investment decisions.
+* Historical market data is fetched locally using Yahoo Finance via `yfinance`.
+* No raw market datasets are redistributed.
+* This repository is not intended for commercial resale or redistribution.
+
+---
+
+# Future Goals
+
+* Expanded curriculum worlds
+* Interactive chart drawing lessons
+* Portfolio simulation sandbox
+* Achievement systems
+* Offline inference support
+* Additional ML explanation models
+* Native mobile companion experience
+
+---
+
+# License
+
+See repository license for details.
