@@ -1,8 +1,7 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart'; // Required for kReleaseMode
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart'
-    as p; // For cross-platform bundle path management
+import 'package:path/path.dart' as p;
 import '../models/models.dart';
 import '../services/sage_service.dart';
 
@@ -15,64 +14,65 @@ class BackendNotifier extends Notifier<BackendStatus> {
   @override
   BackendStatus build() {
     _startBackend();
-
-    // Auto-cleanup hook if Riverpod manages to tear down the provider context
-    ref.onDispose(() {
-      stopBackend();
-    });
-
+    ref.onDispose(() => stopBackend());
     return BackendStatus.starting;
   }
 
-  // ── NEW: Safely Kill Process (Resolves the main.dart compilation error) ──
   void stopBackend() {
-    if (_process != null) {
-      _process!.kill();
-      _process = null;
-    }
+    _process?.kill();
+    _process = null;
   }
 
   Future<void> _startBackend() async {
-    final alive = await ref.read(sageServiceProvider).isBackendAlive();
-    if (alive) {
+    // 1. Quick check if already online
+    if (await ref.read(sageServiceProvider).isBackendAlive()) {
       state = BackendStatus.online;
       return;
     }
+
     try {
       if (kReleaseMode) {
-        // PRODUCTION: Run bundled PyInstaller standalone binary asset
-        String executableName =
-            Platform.isWindows ? 'sage_backend.exe' : 'sage_backend';
-        String backendPath = p.join(Directory.current.path, 'data',
-            'flutter_assets', 'backend_bundle', 'sage_backend', executableName);
+        // PRODUCTION: Use the executable's directory as the anchor
+        final String exeDir = p.dirname(Platform.resolvedExecutable);
+
+        // Path matches the CI/CD injection location:
+        // flutter_assets/backend_bundle/sage_backend/sage_backend(.exe)
+        final String backendPath = p.join(
+            exeDir,
+            'data',
+            'flutter_assets',
+            'backend_bundle',
+            'sage_backend',
+            Platform.isWindows ? 'sage_backend.exe' : 'sage_backend');
 
         _process = await Process.start(
           backendPath,
           [],
-          mode:
-              ProcessStartMode.normal, // Ties lifecycle to host shell instance
+          workingDirectory:
+              p.dirname(backendPath), // Essential for finding Python libs
+          mode: ProcessStartMode.normal,
         );
       } else {
-        // DEVELOPMENT: Run via local Python shell execution environment
+        // DEVELOPMENT: Run via local Python shell
         _process = await Process.start(
           'python',
-          ['-m', 'uvicorn', 'main:app', '--host', '0.0.0.0', '--port', '8000'],
+          ['-m', 'uvicorn', 'main:app', '--port', '8000'],
           workingDirectory: _mlDir(),
-          mode: ProcessStartMode
-              .normal, // Changed from detached to allow clean kills
+          mode: ProcessStartMode.normal,
         );
       }
 
+      // 2. Poll for readiness
       for (int i = 0; i < 20; i++) {
         await Future.delayed(const Duration(seconds: 1));
-        final alive = await ref.read(sageServiceProvider).isBackendAlive();
-        if (alive) {
+        if (await ref.read(sageServiceProvider).isBackendAlive()) {
           state = BackendStatus.online;
           return;
         }
       }
       state = BackendStatus.offline;
-    } catch (_) {
+    } catch (e) {
+      debugPrint("Backend start failed: $e");
       state = BackendStatus.offline;
     }
   }

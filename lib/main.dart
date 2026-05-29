@@ -14,47 +14,39 @@ import 'screens/lesson/result_screen.dart';
 import 'screens/sage/sage_screen.dart';
 import 'screens/chat/chat_screen.dart';
 import 'screens/overworld/overworld_screen.dart';
-import 'providers/sage_provider.dart';
+import 'providers/backend_providers.dart';
 import 'services/storage_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  // Proportional layout fallbacks in case operating system reporting fails
+  // Define default window dimensions
   double targetWidth = 1280;
   double targetHeight = 720;
 
   try {
-    // Query the standard implicit primary viewport
     final view = PlatformDispatcher.instance.implicitView;
-
-    // Guard against premature sizing arrays or hidden native configurations
     if (view != null &&
         view.physicalSize.width > 0 &&
         view.physicalSize.height > 0) {
-      // Convert physical pixels to logical layout metrics to handle HiDPI/Retina scales seamlessly
       final logicalWidth = view.physicalSize.width / view.devicePixelRatio;
       final logicalHeight = view.physicalSize.height / view.devicePixelRatio;
-
-      // Target roughly 80% of their monitor real estate, bounded by clear minimums/maximums
       targetWidth = min(1440.0, max(1024.0, logicalWidth * 0.8));
       targetHeight = min(900.0, max(768.0, logicalHeight * 0.8));
     }
   } catch (e) {
-    debugPrint('Safe fallback used. Scaling engine note: $e');
+    debugPrint('Fallback scaling applied: $e');
   }
 
   WindowOptions windowOptions = WindowOptions(
     size: Size(targetWidth, targetHeight),
-    minimumSize: const Size(
-        1024, 720), // Protects structural dashboard elements from squishing
+    minimumSize: const Size(1024, 720),
     center: true,
   );
 
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
-    await windowManager.setPreventClose(
-        true); // Stop the OS from instantly killing the process thread
+    await windowManager.setPreventClose(true);
     await windowManager.show();
     await windowManager.focus();
   });
@@ -62,7 +54,6 @@ void main() async {
   runApp(const ProviderScope(child: StockDApp()));
 }
 
-// Converted to a Stateful Consumer widget to actively track native desktop window lifecycles
 class StockDApp extends ConsumerStatefulWidget {
   const StockDApp({super.key});
 
@@ -74,27 +65,19 @@ class _StockDAppState extends ConsumerState<StockDApp> with WindowListener {
   @override
   void initState() {
     super.initState();
-    windowManager
-        .addListener(this); // Register app listener with the window framework
+    windowManager.addListener(this);
   }
 
   @override
   void dispose() {
-    windowManager.removeListener(this); // Clean up context bounds on teardown
+    windowManager.removeListener(this);
     super.dispose();
   }
 
-  // Intercept the desktop window closing event ("X" button click)
   @override
   void onWindowClose() async {
-    try {
-      // Gracefully terminate the Python Sidecar process to avoid orphan port blocks
-      ref.read(backendProvider.notifier).stopBackend();
-    } catch (e) {
-      debugPrint('Error cleaning up backend process: $e');
-    }
-
-    // Safely dismantle the underlying window frame and close the host shell
+    // Gracefully terminate the backend process before closing the window
+    ref.read(backendProvider.notifier).stopBackend();
     await windowManager.destroy();
   }
 
@@ -214,54 +197,31 @@ class _BackendSplash extends ConsumerWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: StockDTheme.gradient,
-                boxShadow: [
-                  BoxShadow(
-                    color: StockDTheme.sage.withValues(alpha: 0.4),
-                    blurRadius: 20,
-                  ),
-                ],
               ),
-              child: Center(
-                child: Text(
-                  'S',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w800,
-                    color: StockDTheme.bg,
-                  ),
-                ),
+              child: const Center(
+                child: Text('S',
+                    style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white)),
               ),
             ),
             const SizedBox(height: 24),
             Text('StockD',
                 style: StockDTheme.displayLarge.copyWith(fontSize: 32)),
-            const SizedBox(height: 6),
-            Text('LEARN · TRADE · MASTER',
-                style: StockDTheme.labelSmall.copyWith(
-                  letterSpacing: 3,
-                  color: StockDTheme.textSecondary,
-                )),
             const SizedBox(height: 32),
-            Text('Starting SAGE backend...',
-                style: StockDTheme.bodyMono.copyWith(fontSize: 12)),
-            const SizedBox(height: 16),
-            SizedBox(
+            const SizedBox(
               width: 200,
               child: LinearProgressIndicator(
                 backgroundColor: StockDTheme.border,
-                valueColor: const AlwaysStoppedAnimation(StockDTheme.sage),
+                valueColor: AlwaysStoppedAnimation(StockDTheme.sage),
               ),
             ),
             const SizedBox(height: 32),
             GestureDetector(
               onTap: () => ref.read(backendProvider.notifier).skipToOffline(),
-              child: Text(
-                'Skip (run without SAGE)',
-                style: StockDTheme.labelSmall.copyWith(
-                  color: StockDTheme.textMuted,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
+              child: const Text('Skip (run without SAGE)',
+                  style: TextStyle(decoration: TextDecoration.underline)),
             ),
           ],
         ),
@@ -272,39 +232,6 @@ class _BackendSplash extends ConsumerWidget {
 
 class SettingsPlaceholder extends StatelessWidget {
   const SettingsPlaceholder({super.key});
-
   @override
-  Widget build(BuildContext context) {
-    return const _ComingSoon(
-      icon: Icons.settings_rounded,
-      label: 'SETTINGS',
-      sub: 'Preferences & account settings\ncoming soon',
-    );
-  }
-}
-
-class _ComingSoon extends StatelessWidget {
-  final IconData icon;
-  final String label, sub;
-  const _ComingSoon({
-    required this.icon,
-    required this.label,
-    required this.sub,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 40, color: StockDTheme.textMuted),
-          const SizedBox(height: 14),
-          Text(label, style: StockDTheme.headingLarge),
-          const SizedBox(height: 8),
-          Text(sub, style: StockDTheme.bodyLarge, textAlign: TextAlign.center),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const Center(child: Text('SETTINGS'));
 }
