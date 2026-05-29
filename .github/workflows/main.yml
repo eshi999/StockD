@@ -70,7 +70,6 @@ jobs:
           Description: AI Stock App
           Depends: libgtk-3-0
           EOF
-          # Optimization: -Znone for speed
           dpkg-deb --root-owner-group -Znone --build $DEB_ROOT StockD-linux-x64.deb
           
           RPM_ROOT=$HOME/rpmbuild
@@ -86,17 +85,17 @@ jobs:
           Summary: StockD App
           BuildArch: x86_64
           License: Proprietary
+          Source0: StockD-1.2.0.tar.gz
           %description
           AI Coach.
           %prep
-          %setup -c
+          %setup -c -n StockD-1.2.0
           %install
           mkdir -p %{buildroot}/usr/lib/StockD
           cp -r ./* %{buildroot}/usr/lib/StockD/
           %files
           /usr/lib/StockD
           EOF
-          # Optimization: Skip stripping for speed
           rpmbuild -bb --define "__strip /bin/true" $RPM_ROOT/SPECS/StockD.spec
       - uses: actions/upload-artifact@v4
         with: 
@@ -121,6 +120,8 @@ jobs:
           DEST_DIR="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$DEST_DIR"
           cp -r backend/* "$DEST_DIR/"
+          rm -f StockD-macos-intel.dmg
+          sleep 2
           hdiutil create -volname "StockD-Intel" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-macos-intel.dmg
       - uses: actions/upload-artifact@v4
         with: {name: StockD-macos-intel, path: StockD-macos-intel.dmg}
@@ -141,6 +142,8 @@ jobs:
           DEST_DIR="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$DEST_DIR"
           cp -r backend/* "$DEST_DIR/"
+          rm -f StockD-macos-arm.dmg
+          sleep 2
           hdiutil create -volname "StockD-Silicon" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-macos-arm.dmg
       - uses: actions/upload-artifact@v4
         with: {name: StockD-macos-arm, path: StockD-macos-arm.dmg}
