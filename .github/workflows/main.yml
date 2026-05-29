@@ -15,7 +15,7 @@ on:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
-  # Linux x64 — .deb + .rpm
+  # Linux x64
   # ──────────────────────────────────────────────────────────────────────────
   build-linux:
     name: Linux x64
@@ -87,50 +87,9 @@ jobs:
           ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
           if [ -f "$ICON_SRC" ]; then cp $ICON_SRC $DEB_ROOT/usr/share/icons/hicolor/256x256/apps/stockd.png; fi
           dpkg-deb --root-owner-group --build $DEB_ROOT stockd-linux-x64.deb
-      - name: Build .rpm package
-        run: |
-          BUNDLE_DIR=$(pwd)/build/linux/x64/bundle
-          RPM_ROOT=$HOME/rpmbuild
-          mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS,SRPMS}
-          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
-          if [ -f "$ICON_SRC" ]; then cp $ICON_SRC $RPM_ROOT/SOURCES/stockd.png; fi
-          mkdir -p /tmp/stockd-1.0.0 && cp -r $BUNDLE_DIR/* /tmp/stockd-1.0.0/
-          tar -czf $RPM_ROOT/SOURCES/stockd-1.0.0.tar.gz -C /tmp stockd-1.0.0
-          cat > $RPM_ROOT/SPECS/stockd.spec << SPECEOF
-          %global debug_package %{nil}
-          Name: stockd
-          Version: 1.2.0
-          Release: 1
-          Summary: Gamified stock market literacy app
-          License: Proprietary
-          BuildArch: x86_64
-          Source0: stockd-1.0.0.tar.gz
-          %description
-          StockD is a gamified stock market literacy app powered by an AI coach.
-          %install
-          mkdir -p %{buildroot}/usr/lib/stockd %{buildroot}/usr/bin
-          cp -r * %{buildroot}/usr/lib/stockd/
-          cat > %{buildroot}/usr/bin/stockd << EOF
-          #!/bin/bash
-          exec /usr/lib/stockd/stockd "\$@"
-          EOF
-          chmod +x %{buildroot}/usr/bin/stockd
-          %files
-          /usr/bin/stockd
-          /usr/lib/stockd/
-          SPECEOF
-          rpmbuild -bb $RPM_ROOT/SPECS/stockd.spec
-          find $RPM_ROOT/RPMS -name "*.rpm" -exec cp {} stockd-linux-x64.rpm \;
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
-        with: 
-          name: stockd-linux-packages
-          path: |
-            stockd-linux-x64.deb
-            stockd-linux-x64.rpm
 
   # ──────────────────────────────────────────────────────────────────────────
-  # macOS — Universal Bundle (x86_64 + arm64)
+  # macOS — Universal Bundle
   # ──────────────────────────────────────────────────────────────────────────
   build-macos:
     name: macOS Universal
@@ -153,7 +112,7 @@ jobs:
       - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend --onefile --noconsole --clean --add-data "artifacts:artifacts" main.py
+          pyinstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts:artifacts" main.py
       - run: |
           flutter config --enable-macos-desktop
           flutter pub get
@@ -164,14 +123,10 @@ jobs:
         run: |
           TARGET_ASSET_DIR="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$TARGET_ASSET_DIR"
-          cp ML/dist/sage_backend "$TARGET_ASSET_DIR/"
-          chmod +x "$TARGET_ASSET_DIR/sage_backend"
+          cp -r ML/dist/sage_backend/* "$TARGET_ASSET_DIR/"
           mkdir -p dmg_staging
           cp -R build/macos/Build/Products/Release/StockD.app dmg_staging/StockD.app
           hdiutil create -volname "StockD" -srcfolder dmg_staging -ov -format UDZO stockd-macos-universal.dmg
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
-        with: {name: stockd-macos, path: stockd-macos-universal.dmg}
 
   # ──────────────────────────────────────────────────────────────────────────
   # Windows x64 — NSIS installer
@@ -185,8 +140,8 @@ jobs:
       - name: Free up disk space
         shell: powershell
         run: |
-          Get-ChildItem -Path "C:\Program Files (x86)\Android\android-sdk" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse
-          Remove-Item -Path "C:\Program Files\dotnet" -Force -Recurse
+          Remove-Item -Path "C:\Program Files (x86)\Android\android-sdk" -Force -Recurse -ErrorAction SilentlyContinue
+          Remove-Item -Path "C:\Program Files\dotnet" -Force -Recurse -ErrorAction SilentlyContinue
       - uses: subosito/flutter-action@v2
         with: {channel: stable, cache: true}
       - name: Set up Native Python
@@ -200,7 +155,7 @@ jobs:
       - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend --onefile --noconsole --clean --add-data "artifacts;artifacts" main.py
+          pyinstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts;artifacts" main.py
       - run: |
           flutter config --enable-windows-desktop
           flutter pub get
@@ -211,7 +166,7 @@ jobs:
         run: |
           $assetsPath = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
           New-Item -ItemType Directory -Force -Path $assetsPath
-          Copy-Item -Path "ML\dist\sage_backend.exe" -Destination $assetsPath
+          Copy-Item -Path "ML\dist\sage_backend\*" -Destination $assetsPath -Recurse
           @"
           Name "StockD"
           OutFile "stockd-windows-x64-setup.exe"
@@ -223,6 +178,11 @@ jobs:
           SectionEnd
           "@ | Out-File -Encoding ASCII stockd.nsi
           & "C:\Program Files (x86)\NSIS\makensis.exe" stockd.nsi
-      - name: Upload Windows artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
-        with: {name: stockd-windows, path: stockd-windows-x64-setup.exe}
+        with:
+          name: stockd-artifacts
+          path: |
+            stockd-linux-x64.deb
+            stockd-macos-universal.dmg
+            stockd-windows-x64-setup.exe
