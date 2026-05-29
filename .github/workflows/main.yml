@@ -15,7 +15,7 @@ on:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
-  # STAGE 1: Build SAGE Backend (Centralized)
+  # STAGE 1: Build SAGE Backend (Once)
   # ──────────────────────────────────────────────────────────────────────────
   build-backend:
     name: Build SAGE Backend
@@ -55,16 +55,28 @@ jobs:
           cp -r backend/* build/linux/x64/bundle/data/flutter_assets/backend_bundle/
       - name: Build Packages
         run: |
+          # DEB Packaging
           DEB_ROOT=build/linux/deb/stockd
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/stockd
           tar -C build/linux/x64/bundle -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/stockd/
+          cat > $DEB_ROOT/DEBIAN/control << EOF
+          Package: stockd
+          Version: 1.2.0
+          Architecture: amd64
+          Maintainer: Gautam Mahajan
+          Description: AI Stock App
+          Depends: libgtk-3-0
+          EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT stockd-linux-x64.deb
           
+          # RPM Packaging
           RPM_ROOT=$HOME/rpmbuild
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS}
           tar -czf $RPM_ROOT/SOURCES/stockd-1.2.0.tar.gz -C build/linux/x64/bundle .
           cat > $RPM_ROOT/SPECS/stockd.spec << EOF
           %global __requires_exclude_from ^/usr/lib/stockd/.*$
+          %global __provides_exclude_from ^/usr/lib/stockd/.*$
+          %global _binaries_in_noarch_packages_terminate_build 0
           Name: stockd
           Version: 1.2.0
           Release: 1
@@ -101,7 +113,7 @@ jobs:
         with: {name: sage-backend-bundle, path: backend}
       - run: |
           flutter config --enable-macos-desktop
-          flutter build macos --release --arch x86_64
+          flutter build macos --release
           cp -r backend/* build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle/
           hdiutil create -volname "StockD-Intel" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW stockd-macos-intel.dmg
       - uses: actions/upload-artifact@v4
@@ -119,7 +131,7 @@ jobs:
         with: {name: sage-backend-bundle, path: backend}
       - run: |
           flutter config --enable-macos-desktop
-          flutter build macos --release --arch arm64
+          flutter build macos --release
           cp -r backend/* build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle/
           hdiutil create -volname "StockD-Silicon" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW stockd-macos-arm.dmg
       - uses: actions/upload-artifact@v4
@@ -156,3 +168,8 @@ jobs:
             SetOutPath "$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
             CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe"
+          SectionEnd
+          "@ | Out-File -Encoding ASCII stockd.nsi
+          makensis.exe stockd.nsi
+      - uses: actions/upload-artifact@v4
+        with: {name: stockd-windows-x64, path: stockd-windows-x64-setup.exe}
