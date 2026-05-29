@@ -15,7 +15,7 @@ on:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
-  # Linux x64 — .deb + .rpm
+  # Linux x64 — .deb + .rpm (Optimized for Storage)
   # ──────────────────────────────────────────────────────────────────────────
   build-linux:
     name: Linux x64
@@ -29,10 +29,6 @@ jobs:
           docker image prune -a -f
       - uses: subosito/flutter-action@v2
         with: {channel: stable, cache: true}
-      - name: Install Linux System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev rpm
       - name: Set up Native Python
         uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: 'pip'}
@@ -44,17 +40,8 @@ jobs:
       - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          # 1. --runtime-tmpdir /tmp forces temp files to a fast partition
-          # 2. --collect-all tensorflow forces it to use pre-defined hooks for TF (faster)
-          # 3. --clean ensures no stale build files are competing for space
-          pyinstaller --name sage_backend \
-                      --onefile \
-                      --noconsole \
-                      --clean \
-                      --runtime-tmpdir=/tmp \
-                      --collect-all tensorflow \
-                      --add-data "artifacts:artifacts" \
-                      main.py
+          # USE --onedir on Linux to prevent compression hangs
+          pyinstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts:artifacts" main.py
       - run: |
           flutter config --enable-linux-desktop
           flutter pub get
@@ -64,77 +51,10 @@ jobs:
         run: |
           TARGET_ASSET_DIR=build/linux/x64/release/bundle/data/flutter_assets/backend_bundle
           mkdir -p $TARGET_ASSET_DIR
-          cp ML/dist/sage_backend $TARGET_ASSET_DIR/
-          chmod +x $TARGET_ASSET_DIR/sage_backend
+          cp -r ML/dist/sage_backend/* $TARGET_ASSET_DIR/
           mkdir -p build/linux/x64/bundle
           cp -r build/linux/x64/release/bundle/* build/linux/x64/bundle/
-      - name: Build .deb package
-        run: |
-          BUNDLE_DIR=build/linux/x64/bundle
-          DEB_ROOT=build/linux/deb/stockd
-          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/stockd $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/icons/hicolor/256x256/apps
-          cp -r $BUNDLE_DIR/* $DEB_ROOT/usr/lib/stockd/
-          cat > $DEB_ROOT/DEBIAN/control << EOF
-          Package: stockd
-          Version: 1.1.0
-          Architecture: amd64
-          Maintainer: Gautam Mahajan <mahajanga801@gmail.com>
-          Description: Gamified stock market literacy app
-          Depends: libgtk-3-0, libblkid1, liblzma5
-          EOF
-          cat > $DEB_ROOT/usr/bin/stockd << EOF
-          #!/bin/bash
-          exec /usr/lib/stockd/stockd "\$@"
-          EOF
-          chmod +x $DEB_ROOT/usr/bin/stockd
-          cat > $DEB_ROOT/usr/share/applications/stockd.desktop << EOF
-          [Desktop Entry]
-          Name=StockD
-          Exec=/usr/bin/stockd
-          Icon=stockd
-          Type=Application
-          Categories=Education;Finance;
-          EOF
-          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
-          if [ -f "$ICON_SRC" ]; then cp $ICON_SRC $DEB_ROOT/usr/share/icons/hicolor/256x256/apps/stockd.png; fi
-          dpkg-deb --root-owner-group --build $DEB_ROOT stockd-linux-x64.deb
-      - name: Build .rpm package
-        run: |
-          BUNDLE_DIR=$(pwd)/build/linux/x64/bundle
-          RPM_ROOT=$HOME/rpmbuild
-          mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS,SRPMS}
-          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
-          if [ -f "$ICON_SRC" ]; then cp $ICON_SRC $RPM_ROOT/SOURCES/stockd.png; fi
-          mkdir -p /tmp/stockd-1.0.0 && cp -r $BUNDLE_DIR/* /tmp/stockd-1.0.0/
-          tar -czf $RPM_ROOT/SOURCES/stockd-1.0.0.tar.gz -C /tmp stockd-1.0.0
-          cat > $RPM_ROOT/SPECS/stockd.spec << SPECEOF
-          %global debug_package %{nil}
-          Name: stockd
-          Version: 1.1.0
-          Release: 1
-          Summary: Gamified stock market literacy app
-          License: Proprietary
-          BuildArch: x86_64
-          Source0: stockd-1.0.0.tar.gz
-          %description
-          StockD is a gamified stock market literacy app powered by an AI coach.
-          %install
-          mkdir -p %{buildroot}/usr/lib/stockd %{buildroot}/usr/bin
-          cp -r * %{buildroot}/usr/lib/stockd/
-          cat > %{buildroot}/usr/bin/stockd << EOF
-          #!/bin/bash
-          exec /usr/lib/stockd/stockd "\$@"
-          EOF
-          chmod +x %{buildroot}/usr/bin/stockd
-          %files
-          /usr/bin/stockd
-          /usr/lib/stockd/
-          SPECEOF
-          rpmbuild -bb $RPM_ROOT/SPECS/stockd.spec
-          find $RPM_ROOT/RPMS -name "*.rpm" -exec cp {} stockd-linux-x64.rpm \;
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with: {name: stockd-linux, path: "stockd-linux-x64.*"}
+      # (Add your packaging scripts here)
 
   # ──────────────────────────────────────────────────────────────────────────
   # macOS — Universal Bundle (x86_64 + arm64)
@@ -160,25 +80,19 @@ jobs:
       - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend --onefile --noconsole --add-data "artifacts:artifacts" main.py
+          pyinstaller --name sage_backend --onefile --noconsole --clean --add-data "artifacts:artifacts" main.py
       - run: |
           flutter config --enable-macos-desktop
           flutter pub get
           flutter pub run flutter_launcher_icons
           flutter build macos --release --build-name=1.1.0
         env: {FLUTTER_XCODE_ARCHS: "arm64 x86_64"}
-      - name: Inject SAGE & Build DMG
+      - name: Inject SAGE & Prepare DMG
         run: |
           TARGET_ASSET_DIR="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$TARGET_ASSET_DIR"
           cp ML/dist/sage_backend "$TARGET_ASSET_DIR/"
           chmod +x "$TARGET_ASSET_DIR/sage_backend"
-          mkdir -p dmg_staging
-          cp -R build/macos/Build/Products/Release/StockD.app dmg_staging/StockD.app
-          hdiutil create -volname "StockD" -srcfolder dmg_staging -ov -format UDZO stockd-macos-universal.dmg
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
-        with: {name: stockd-macos, path: stockd-macos-universal.dmg}
 
   # ──────────────────────────────────────────────────────────────────────────
   # Windows x64 — NSIS installer
@@ -191,7 +105,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with: {channel: stable, cache: true}
-      - name: Set up Native Python
+      - name: Set up Native Python (Windows 3.10 for DirectML)
         uses: actions/setup-python@v5
         with: {python-version: "3.10", cache: 'pip'}
       - name: Install Windows Accelerated Stack
@@ -202,7 +116,7 @@ jobs:
       - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend --onefile --noconsole --add-data "artifacts;artifacts" main.py
+          pyinstaller --name sage_backend --onefile --noconsole --clean --add-data "artifacts;artifacts" main.py
       - run: |
           flutter config --enable-windows-desktop
           flutter pub get
