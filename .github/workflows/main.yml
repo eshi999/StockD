@@ -21,7 +21,7 @@ jobs:
 
           - name: linux-amd
             os: ubuntu-latest
-            tf_packages: tensorflow-rocm
+            tf_packages: tensorflow
             flutter_platform: linux
 
           - name: linux-intel
