@@ -14,6 +14,7 @@ on:
           - macos
 
 jobs:
+
   # ─────────────────────────────────────────
   # Linux x64 — .deb + .rpm (NVIDIA CUDA + oneDNN CPU)
   # ─────────────────────────────────────────
@@ -209,7 +210,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -310,9 +311,11 @@ jobs:
       - name: Install Windows GPU Accelerated Python Stack
         shell: powershell {0}
         run: |
-          conda install scikit-learn pandas yfinance pyinstaller -y
-          python -m pip install tensorflow-cpu==2.15.0
-          python -m pip install tensorflow-directml-plugin
+          conda install scikit-learn pandas yfinance pyinstaller pip -y
+          
+          # FIXED: Forced execution context routing via environment prefixes to avoid path conflicts
+          & "$env:CONDA_PREFIX\python.exe" -m pip install tensorflow-cpu==2.15.0
+          & "$env:CONDA_PREFIX\python.exe" -m pip install tensorflow-directml-plugin
 
       - name: Build SAGE Backend (Windows Executable)
         shell: powershell {0}
