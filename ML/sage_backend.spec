@@ -3,7 +3,7 @@
 
 a = Analysis(
     ['main.py'],
-    pathex=['/home/gautam/anaconda3/envs/ml/lib/python3.12/site-packages'],
+    pathex=[],
     binaries=[],
     datas=[('artifacts', 'artifacts'), ('historical', 'historical')],
     hiddenimports=[],
