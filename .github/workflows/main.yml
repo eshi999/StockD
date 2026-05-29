@@ -159,10 +159,14 @@ jobs:
           $assetsPath = "$bundlePath\data\flutter_assets\backend_bundle"
           New-Item -ItemType Directory -Force -Path $assetsPath
           Copy-Item -Path "backend\*" -Destination $assetsPath -Recurse
-      - name: Install NSIS
-        uses: repolevedavaj/install-nsis@v1.0.3
-        with:
-          nsis-version: '3.11'
+      
+      # FIX: Use Chocolatey instead of an external action
+      - name: Install NSIS via Chocolatey
+        run: |
+          choco install nsis -y --no-progress
+          # Add NSIS to PATH for this session
+          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          
       - shell: powershell
         run: |
           @"
@@ -175,6 +179,7 @@ jobs:
             CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\StockD.exe"
           SectionEnd
           "@ | Out-File -Encoding ASCII StockD.nsi
+          # Now makensis.exe will be found because it is in the PATH
           makensis.exe StockD.nsi
       - uses: actions/upload-artifact@v4
-        with: {name: StockD-windows-x64, path: StockD-windows-x64-setup.exe}
+        with: {name: StockD-Winx64, path: StockD-Winx64-setup.exe}
