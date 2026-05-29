@@ -15,7 +15,7 @@ on:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
-  # STAGE 1: Build SAGE Backend
+  # STAGE 1: Build SAGE Backend (Once)
   # ──────────────────────────────────────────────────────────────────────────
   build-backend:
     name: Build SAGE Backend
@@ -70,7 +70,8 @@ jobs:
           Description: AI Stock App
           Depends: libgtk-3-0
           EOF
-          dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-x64.deb
+          # Optimization: -Znone for speed
+          dpkg-deb --root-owner-group -Znone --build $DEB_ROOT StockD-linux-x64.deb
           
           RPM_ROOT=$HOME/rpmbuild
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS}
@@ -78,6 +79,7 @@ jobs:
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
           %global __requires_exclude_from ^/usr/lib/StockD/.*$
           %global __provides_exclude_from ^/usr/lib/StockD/.*$
+          %global _binaries_in_noarch_packages_terminate_build 0
           Name: StockD
           Version: 1.2.0
           Release: 1
@@ -94,7 +96,8 @@ jobs:
           %files
           /usr/lib/StockD
           EOF
-          rpmbuild -bb $RPM_ROOT/SPECS/StockD.spec
+          # Optimization: Skip stripping for speed
+          rpmbuild -bb --define "__strip /bin/true" $RPM_ROOT/SPECS/StockD.spec
       - uses: actions/upload-artifact@v4
         with: 
           name: StockD-linux-pkgs
@@ -159,14 +162,10 @@ jobs:
           $assetsPath = "$bundlePath\data\flutter_assets\backend_bundle"
           New-Item -ItemType Directory -Force -Path $assetsPath
           Copy-Item -Path "backend\*" -Destination $assetsPath -Recurse
-      
-      # FIX: Use Chocolatey instead of an external action
       - name: Install NSIS via Chocolatey
         run: |
           choco install nsis -y --no-progress
-          # Add NSIS to PATH for this session
           echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          
       - shell: powershell
         run: |
           @"
@@ -179,7 +178,6 @@ jobs:
             CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\StockD.exe"
           SectionEnd
           "@ | Out-File -Encoding ASCII StockD.nsi
-          # Now makensis.exe will be found because it is in the PATH
           makensis.exe StockD.nsi
       - uses: actions/upload-artifact@v4
-        with: {name: StockD-Winx64, path: StockD-Winx64-setup.exe}
+        with: {name: StockD-windows-x64, path: StockD-windows-x64-setup.exe}
