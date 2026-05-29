@@ -55,7 +55,7 @@ jobs:
           cp -r backend/* build/linux/x64/bundle/data/flutter_assets/backend_bundle/
       - name: Build Packages
         run: |
-          # DEB Packaging
+          # 1. DEB Packaging
           DEB_ROOT=build/linux/deb/stockd
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/stockd
           tar -C build/linux/x64/bundle -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/stockd/
@@ -69,7 +69,7 @@ jobs:
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT stockd-linux-x64.deb
           
-          # RPM Packaging
+          # 2. RPM Packaging
           RPM_ROOT=$HOME/rpmbuild
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS}
           tar -czf $RPM_ROOT/SOURCES/stockd-1.2.0.tar.gz -C build/linux/x64/bundle .
