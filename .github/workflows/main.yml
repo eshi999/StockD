@@ -14,99 +14,68 @@ on:
           - macos
 
 jobs:
-
-  # ─────────────────────────────────────────
-  # Linux x64 — .deb + .rpm (NVIDIA CUDA + oneDNN CPU)
-  # ─────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
+  # Linux x64
+  # ──────────────────────────────────────────────────────────────────────────
   build-linux:
     name: Linux x64
     runs-on: ubuntu-latest
     if: inputs.target == 'linux'
-
     steps:
       - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install Linux System Dependencies
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /usr/share/swift /opt/ghc
+          docker image prune -a -f
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev rpm
-
-      - name: Set up Miniconda (Linux)
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          python-version: "3.12"
-          channels: conda-forge,defaults
-          activate-environment: stockd_env
-
-      - name: Install Hardware Accelerated Python Stack (Linux)
-        shell: bash -el {0}
+      - uses: subosito/flutter-action@v2
+        with: {channel: stable, cache: true}
+      - name: Set up Native Python
+        uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: 'pip'}
+      - name: Install Python Stack & Purge Cache
         run: |
-          conda install tensorflow-gpu scikit-learn pandas yfinance pyinstaller cudatoolkit cudnn -c conda-forge -y
-
-      - name: Build SAGE Backend (Linux Binary)
-        shell: bash -el {0}
+          python -m pip install --upgrade pip
+          python -m pip install tensorflow[and-cuda]==2.16.1 scikit-learn pandas yfinance pyinstaller
+          python -m pip cache purge
+      - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend \
-                      --onedir \
-                      --noconsole \
-                      --add-data "artifacts:artifacts" \
-                      main.py
-
-      - run: flutter config --enable-linux-desktop
-      - run: flutter pub get
-
-      - name: Generate icons
-        run: flutter pub run flutter_launcher_icons
-
-      - name: Build Flutter Linux app
-        run: flutter build linux --release --build-name=1.1.0
-
+          pyinstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts:artifacts" main.py
+      - run: |
+          flutter config --enable-linux-desktop
+          flutter pub get
+          flutter pub run flutter_launcher_icons
+          flutter build linux --release --build-name=1.2.0
       - name: Inject SAGE into Linux Assets
         run: |
           TARGET_ASSET_DIR=build/linux/x64/release/bundle/data/flutter_assets/backend_bundle
           mkdir -p $TARGET_ASSET_DIR
-          cp -r ML/dist/sage_backend $TARGET_ASSET_DIR/
-          chmod +x $TARGET_ASSET_DIR/sage_backend/sage_backend
-
-      - name: Prepare bundle
-        run: |
-          RELEASE_DIR=build/linux/x64/release/bundle
-          if [ ! -d "$RELEASE_DIR" ]; then
-            echo "Release directory not found: $RELEASE_DIR"
-            exit 1
-          fi
+          cp -r ML/dist/sage_backend/* $TARGET_ASSET_DIR/
           mkdir -p build/linux/x64/bundle
-          cp -r $RELEASE_DIR/* build/linux/x64/bundle/
-
+          cp -r build/linux/x64/release/bundle/* build/linux/x64/bundle/
       - name: Build .deb package
         run: |
           BUNDLE_DIR=build/linux/x64/bundle
           DEB_ROOT=build/linux/deb/stockd
-
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/stockd $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/icons/hicolor/256x256/apps
           cp -r $BUNDLE_DIR/* $DEB_ROOT/usr/lib/stockd/
-
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd
-          Version: 1.1.0
+          Version: 1.2.0
           Architecture: amd64
           Maintainer: Gautam Mahajan <mahajanga801@gmail.com>
           Description: Gamified stock market literacy app
           Depends: libgtk-3-0, libblkid1, liblzma5
           EOF
-
           cat > $DEB_ROOT/usr/bin/stockd << EOF
           #!/bin/bash
           exec /usr/lib/stockd/stockd "\$@"
           EOF
           chmod +x $DEB_ROOT/usr/bin/stockd
-
           cat > $DEB_ROOT/usr/share/applications/stockd.desktop << EOF
           [Desktop Entry]
           Name=StockD
@@ -115,262 +84,151 @@ jobs:
           Type=Application
           Categories=Education;Finance;
           EOF
-
           ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
-          if [ -f "$ICON_SRC" ]; then
-            cp $ICON_SRC $DEB_ROOT/usr/share/icons/hicolor/256x256/apps/stockd.png
-          fi
-
-          dpkg-deb --root-owner-group --build $DEB_ROOT stockd-linux-x64.deb
-
+          if [ -f "$ICON_SRC" ]; then cp $ICON_SRC $DEB_ROOT/usr/share/icons/hicolor/256x256/apps/stockd.png; fi
+          # FIXED: -Znone disables compression to prevent build hangs
+          dpkg-deb --root-owner-group -Znone --build $DEB_ROOT stockd-linux-x64.deb
       - name: Build .rpm package
         run: |
           BUNDLE_DIR=$(pwd)/build/linux/x64/bundle
           RPM_ROOT=$HOME/rpmbuild
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS,SRPMS}
-
           ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
-          if [ -f "$ICON_SRC" ]; then
-            cp $ICON_SRC $RPM_ROOT/SOURCES/stockd.png
-          fi
-
-          mkdir -p /tmp/stockd-1.0.0
-          cp -r $BUNDLE_DIR/* /tmp/stockd-1.0.0/
+          if [ -f "$ICON_SRC" ]; then cp $ICON_SRC $RPM_ROOT/SOURCES/stockd.png; fi
+          mkdir -p /tmp/stockd-1.0.0 && cp -r $BUNDLE_DIR/* /tmp/stockd-1.0.0/
           tar -czf $RPM_ROOT/SOURCES/stockd-1.0.0.tar.gz -C /tmp stockd-1.0.0
-
           cat > $RPM_ROOT/SPECS/stockd.spec << SPECEOF
           %global debug_package %{nil}
-          Name:           stockd
-          Version:        1.1.0
-          Release:        1
-          Summary:        Gamified stock market literacy app
-          License:        Proprietary
-          BuildArch:      x86_64
-          Source0:        stockd-1.0.0.tar.gz
-          Source1:        stockd.png
-
+          Name: stockd
+          Version: 1.2.0
+          Release: 1
+          Summary: Gamified stock market literacy app
+          License: Proprietary
+          BuildArch: x86_64
+          Source0: stockd-1.0.0.tar.gz
           %description
           StockD is a gamified stock market literacy app powered by an AI coach.
-
-          %prep
-          %setup -q
-
           %install
-          mkdir -p %{buildroot}/usr/lib/stockd %{buildroot}/usr/bin %{buildroot}/usr/share/applications %{buildroot}/usr/share/icons/hicolor/256x256/apps
+          mkdir -p %{buildroot}/usr/lib/stockd %{buildroot}/usr/bin
           cp -r * %{buildroot}/usr/lib/stockd/
-
           cat > %{buildroot}/usr/bin/stockd << EOF
           #!/bin/bash
           exec /usr/lib/stockd/stockd "\$@"
           EOF
           chmod +x %{buildroot}/usr/bin/stockd
-
-          cat > %{buildroot}/usr/share/applications/stockd.desktop << EOF
-          [Desktop Entry]
-          Name=StockD
-          Exec=/usr/bin/stockd
-          Icon=stockd
-          Type=Application
-          Categories=Education;Finance;
-          EOF
-
-          if [ -f %{_sourcedir}/stockd.png ]; then
-            cp %{_sourcedir}/stockd.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/stockd.png
-          fi
-
           %files
           /usr/bin/stockd
           /usr/lib/stockd/
-          /usr/share/applications/stockd.desktop
-          /usr/share/icons/hicolor/256x256/apps/stockd.png
           SPECEOF
-
           rpmbuild -bb $RPM_ROOT/SPECS/stockd.spec
           find $RPM_ROOT/RPMS -name "*.rpm" -exec cp {} stockd-linux-x64.rpm \;
-
-      - name: Upload .deb artifact
+      - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
-        with:
-          name: stockd-linux-deb
-          path: stockd-linux-x64.deb
+        with: 
+          name: stockd-linux-packages
+          path: |
+            stockd-linux-x64.deb
+            stockd-linux-x64.rpm
 
-      - name: Upload .rpm artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stockd-linux-rpm
-          path: stockd-linux-x64.rpm
-
-  # ─────────────────────────────────────────
-  # macOS — Universal Bundle (Intel x86_64 + Apple Metal GPU arm64)
-  # ─────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
+  # macOS — Universal Bundle
+  # ──────────────────────────────────────────────────────────────────────────
   build-macos:
     name: macOS Universal
     runs-on: macos-15
     if: inputs.target == 'macos'
-
     steps:
       - uses: actions/checkout@v4
-      
+      - name: Free up disk space
+        run: sudo rm -rf /usr/local/share/dotnet /usr/local/lib/node_modules
       - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Set up Miniconda (macOS)
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          python-version: "3.12"
-          channels: conda-forge,defaults
-          activate-environment: stockd_env
-
-      - name: Install Python Stack & tensorflow-metal (macOS Acceleration Matrix)
-        shell: bash -el {0}
+        with: {channel: stable, cache: true}
+      - name: Set up Native Python
+        uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: 'pip'}
+      - name: Install Python Stack & tensorflow-metal
         run: |
-          conda install tensorflow scikit-learn pandas yfinance pyinstaller -y
-          python -m pip install tensorflow-metal
-
-      - run: flutter config --enable-macos-desktop
-      - run: flutter pub get
-
-      - name: Generate icons
-        run: flutter pub run flutter_launcher_icons
-
-      - name: Build SAGE Backend (macOS Binary)
-        shell: bash -el {0}
+          python -m pip install --upgrade pip
+          python -m pip install tensorflow==2.16.1 scikit-learn pandas yfinance pyinstaller tensorflow-metal
+          python -m pip cache purge
+      - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend \
-                      --onedir \
-                      --noconsole \
-                      --add-data "artifacts:artifacts" \
-                      main.py
-
-      - name: Build Flutter macOS Universal Application
-        run: flutter build macos --release --build-name=1.1.0
-        env:
-          FLUTTER_XCODE_ARCHS: "arm64 x86_64"
-
-      - name: Inject SAGE into App Bundle Assets
+          pyinstaller --name sage_backend --onefile --noconsole --clean --add-data "artifacts:artifacts" main.py
+      - run: |
+          flutter config --enable-macos-desktop
+          flutter pub get
+          flutter pub run flutter_launcher_icons
+          flutter build macos --release --build-name=1.2.0
+        env: {FLUTTER_XCODE_ARCHS: "arm64 x86_64"}
+      - name: Inject SAGE & Build DMG
         run: |
           TARGET_ASSET_DIR="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$TARGET_ASSET_DIR"
-          cp -R ML/dist/sage_backend "$TARGET_ASSET_DIR/"
-          chmod +x "$TARGET_ASSET_DIR/sage_backend/sage_backend"
-
-      - name: Verify Universal Architecture Slices
-        run: lipo -info build/macos/Build/Products/Release/StockD.app/Contents/MacOS/StockD
-
-      - name: Build Universal .dmg
-        run: |
+          cp ML/dist/sage_backend "$TARGET_ASSET_DIR/"
+          chmod +x "$TARGET_ASSET_DIR/sage_backend"
           mkdir -p dmg_staging
           cp -R build/macos/Build/Products/Release/StockD.app dmg_staging/StockD.app
-          ln -s /Applications dmg_staging/Applications
           hdiutil create -volname "StockD" -srcfolder dmg_staging -ov -format UDZO stockd-macos-universal.dmg
-
-      - name: Upload Universal .dmg artifact
+      - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
-        with:
-          name: stockd-macos-universal
-          path: stockd-macos-universal.dmg
+        with: {name: stockd-macos, path: stockd-macos-universal.dmg}
 
-  # ─────────────────────────────────────────
-  # Windows x64 — NSIS installer (DirectML GPU Accelerated)
-  # ─────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
+  # Windows x64 — NSIS installer
+  # ──────────────────────────────────────────────────────────────────────────
   build-windows:
     name: Windows x64
     runs-on: windows-latest
     if: inputs.target == 'windows'
-
     steps:
       - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Enable Windows desktop
+      - name: Free up disk space
         shell: powershell
-        run: flutter config --enable-windows-desktop
-
-      - name: Get dependencies
-        shell: powershell
-        run: flutter pub get
-
-      - name: Generate icons
-        shell: powershell
-        run: flutter pub run flutter_launcher_icons
-
-      - name: Set up Miniconda (Windows)
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          python-version: "3.10"
-          channels: conda-forge,defaults
-          activate-environment: stockd_env
-
-      - name: Install Windows GPU Accelerated Python Stack
-        shell: powershell {0}
         run: |
-          conda install scikit-learn pandas yfinance pyinstaller pip -y
-          
-          # FIXED: Forced execution context routing via environment prefixes to avoid path conflicts
-          & "$env:CONDA_PREFIX\python.exe" -m pip install tensorflow-cpu==2.15.0
-          & "$env:CONDA_PREFIX\python.exe" -m pip install tensorflow-directml-plugin
-
-      - name: Build SAGE Backend (Windows Executable)
-        shell: powershell {0}
+          Remove-Item -Path "C:\Program Files (x86)\Android\android-sdk" -Force -Recurse -ErrorAction SilentlyContinue
+          Remove-Item -Path "C:\Program Files\dotnet" -Force -Recurse -ErrorAction SilentlyContinue
+      - uses: subosito/flutter-action@v2
+        with: {channel: stable, cache: true}
+      - name: Set up Native Python
+        uses: actions/setup-python@v5
+        with: {python-version: "3.10", cache: 'pip'}
+      - name: Install Windows Accelerated Stack
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install scikit-learn pandas yfinance pyinstaller tensorflow-cpu==2.15.0 tensorflow-directml-plugin
+          python -m pip cache purge
+      - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend `
-                      --onedir `
-                      --noconsole `
-                      --add-data "artifacts;artifacts" `
-                      main.py
-
-      - name: Build Flutter Windows app
-        shell: powershell
-        run: flutter build windows --release --build-name=1.1.0
-
-      - name: Inject SAGE into Windows Release Runner Folder
+          pyinstaller --name sage_backend --onefile --noconsole --clean --add-data "artifacts;artifacts" main.py
+      - run: |
+          flutter config --enable-windows-desktop
+          flutter pub get
+          flutter pub run flutter_launcher_icons
+          flutter build windows --release --build-name=1.2.0
+      - name: Inject SAGE & Build NSIS
         shell: powershell
         run: |
           $assetsPath = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
-          if (-Not (Test-Path $assetsPath)) {
-              New-Item -ItemType Directory -Force -Path $assetsPath
-          }
-          Copy-Item -Path "ML\dist\sage_backend" -Destination $assetsPath -Recurse -Force
-
-      - name: Copy Flutter Windows build
-        shell: powershell
-        run: |
-          $bundlePath = "build\windows\x64\bundle"
-          New-Item -ItemType Directory -Force -Path $bundlePath
-          $releaseDir = "build\windows\x64\runner\Release"
-          Copy-Item -Path "$releaseDir\*" -Destination $bundlePath -Recurse -Force
-
-      - name: Build NSIS installer
-        shell: powershell
-        run: |
-          $iconSrc = "windows\runner\resources\app_icon.ico"
-          $iconDst = "build\windows\x64\bundle\app_icon.ico"
-          Copy-Item $iconSrc $iconDst -Force
-
-          @'
+          New-Item -ItemType Directory -Force -Path $assetsPath
+          Copy-Item -Path "ML\dist\sage_backend.exe" -Destination $assetsPath
+          @"
           Name "StockD"
           OutFile "stockd-windows-x64-setup.exe"
           InstallDir "$PROGRAMFILES64\StockD"
-          Icon "build\windows\x64\bundle\app_icon.ico"
           Section
             SetOutPath "$INSTDIR"
             File /r "build\windows\x64\bundle\*.*"
-            CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe" "" "$INSTDIR\app_icon.ico" 0
+            CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe"
           SectionEnd
-          '@ | Out-File -Encoding ASCII stockd.nsi
-
+          "@ | Out-File -Encoding ASCII stockd.nsi
           & "C:\Program Files (x86)\NSIS\makensis.exe" stockd.nsi
-
-      - name: Upload Windows artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: stockd-windows-x64
-          path: stockd-windows-x64-setup.exe
+          name: stockd-artifacts
+          path: |
+            stockd-linux-x64.deb
+            stockd-macos-universal.dmg
+            stockd-windows-x64-setup.exe
