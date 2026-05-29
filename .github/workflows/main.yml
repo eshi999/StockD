@@ -36,17 +36,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev rpm
 
-      # FIXED: Swapped Miniconda out for native GitHub Python environment setup
       - name: Set up Native Python (Linux)
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: 'pip'
 
+      # FIXED: Bumped from 2.15.0 to 2.16.1 to unlock Python 3.12 wheel support on Linux
       - name: Install Hardware Accelerated Python Stack (Linux)
         run: |
           python -m pip install --upgrade pip
-          python -m pip install tensorflow[and-cuda]==2.15.0 scikit-learn pandas yfinance pyinstaller
+          python -m pip install tensorflow[and-cuda]==2.16.1 scikit-learn pandas yfinance pyinstaller
 
       - name: Build SAGE Backend (Linux Binary)
         run: |
@@ -215,7 +215,6 @@ jobs:
           channel: stable
           cache: true
 
-      # FIXED: Swapped Miniconda out for native GitHub Python environment setup
       - name: Set up Native Python (macOS)
         uses: actions/setup-python@v5
         with:
@@ -225,7 +224,7 @@ jobs:
       - name: Install Python Stack & tensorflow-metal (macOS Acceleration Matrix)
         run: |
           python -m pip install --upgrade pip
-          python -m pip install tensorflow==2.15.0 scikit-learn pandas yfinance pyinstaller tensorflow-metal
+          python -m pip install tensorflow==2.16.1 scikit-learn pandas yfinance pyinstaller tensorflow-metal
 
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
@@ -298,7 +297,6 @@ jobs:
         shell: powershell
         run: flutter pub run flutter_launcher_icons
 
-      # FIXED: Swapped Miniconda out for native GitHub Python environment setup (3.10 matches DirectML specs safely)
       - name: Set up Native Python (Windows)
         uses: actions/setup-python@v5
         with:
