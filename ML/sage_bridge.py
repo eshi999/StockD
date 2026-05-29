@@ -328,7 +328,12 @@ def _run_model(ticker: str) -> dict:
     seq = np.expand_dims(np.asarray(scaled[-WINDOW_SIZE:], dtype="float32"), axis=0)
 
     outputs = _model.predict(seq, verbose=0)
-    raw_prob = float(outputs[0][0][0])
+
+    # SAFE TENSOR SHAPE UNWRAPPING: Prevents invalid index crashes on multi-dimensional scalar structures
+    if hasattr(outputs, "flatten"):
+        raw_prob = float(outputs.flatten()[0])
+    else:
+        raw_prob = float(outputs[0])
 
     if _calibrator is not None:
         try:
