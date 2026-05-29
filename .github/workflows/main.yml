@@ -144,7 +144,7 @@ jobs:
       - name: Build SAGE Backend
         run: |
           cd ML
-          pyinstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts:artifacts" main.py
+          python -m PyInstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts:artifacts" main.py
       - run: |
           flutter config --enable-macos-desktop
           flutter build macos --release --arch x86_64
@@ -173,7 +173,7 @@ jobs:
       - name: Build SAGE Backend
         run: |
           cd ML
-          pyinstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts:artifacts" main.py
+          python -m PyInstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts:artifacts" main.py
       - run: |
           flutter config --enable-macos-desktop
           flutter build macos --release --arch arm64
