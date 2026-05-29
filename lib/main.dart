@@ -1,6 +1,10 @@
+import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:window_manager/window_manager.dart';
+
 import 'theme/app_theme.dart';
 import 'widgets/sidebar.dart';
 import 'screens/home/home_screen.dart';
@@ -15,16 +19,89 @@ import 'services/storage_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  //await StorageService().clearAll(); // temporary — remove after one run
+  await windowManager.ensureInitialized();
+
+  // Proportional layout fallbacks in case operating system reporting fails
+  double targetWidth = 1280;
+  double targetHeight = 720;
+
+  try {
+    // Query the standard implicit primary viewport
+    final view = PlatformDispatcher.instance.implicitView;
+
+    // Guard against premature sizing arrays or hidden native configurations
+    if (view != null &&
+        view.physicalSize.width > 0 &&
+        view.physicalSize.height > 0) {
+      // Convert physical pixels to logical layout metrics to handle HiDPI/Retina scales seamlessly
+      final logicalWidth = view.physicalSize.width / view.devicePixelRatio;
+      final logicalHeight = view.physicalSize.height / view.devicePixelRatio;
+
+      // Target roughly 80% of their monitor real estate, bounded by clear minimums/maximums
+      targetWidth = min(1440.0, max(1024.0, logicalWidth * 0.8));
+      targetHeight = min(900.0, max(768.0, logicalHeight * 0.8));
+    }
+  } catch (e) {
+    debugPrint('Safe fallback used. Scaling engine note: $e');
+  }
+
+  WindowOptions windowOptions = WindowOptions(
+    size: Size(targetWidth, targetHeight),
+    minimumSize: const Size(
+        1024, 720), // Protects structural dashboard elements from squishing
+    center: true,
+  );
+
+  await windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.setPreventClose(
+        true); // Stop the OS from instantly killing the process thread
+    await windowManager.show();
+    await windowManager.focus();
+  });
+
   runApp(const ProviderScope(child: StockDApp()));
 }
 
-class StockDApp extends ConsumerWidget {
+// Converted to a Stateful Consumer widget to actively track native desktop window lifecycles
+class StockDApp extends ConsumerStatefulWidget {
   const StockDApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StockDApp> createState() => _StockDAppState();
+}
+
+class _StockDAppState extends ConsumerState<StockDApp> with WindowListener {
+  @override
+  void initState() {
+    super.initState();
+    windowManager
+        .addListener(this); // Register app listener with the window framework
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this); // Clean up context bounds on teardown
+    super.dispose();
+  }
+
+  // Intercept the desktop window closing event ("X" button click)
+  @override
+  void onWindowClose() async {
+    try {
+      // Gracefully terminate the Python Sidecar process to avoid orphan port blocks
+      ref.read(backendProvider.notifier).stopBackend();
+    } catch (e) {
+      debugPrint('Error cleaning up backend process: $e');
+    }
+
+    // Safely dismantle the underlying window frame and close the host shell
+    await windowManager.destroy();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final backendStatus = ref.watch(backendProvider);
+
     return MaterialApp.router(
       title: 'StockD',
       debugShowCheckedModeBanner: false,
@@ -62,8 +139,8 @@ final GoRouter _router = GoRouter(
         GoRoute(
           path: '/world/:worldIndex',
           builder: (context, state) {
-            final i = int.tryParse(
-                state.pathParameters['worldIndex'] ?? '0') ?? 0;
+            final i =
+                int.tryParse(state.pathParameters['worldIndex'] ?? '0') ?? 0;
             return WorldScreen(worldIndex: i);
           },
         ),
@@ -84,20 +161,16 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/lesson/:worldIndex/:levelIndex',
       builder: (context, state) {
-        final w = int.tryParse(
-            state.pathParameters['worldIndex'] ?? '0') ?? 0;
-        final l = int.tryParse(
-            state.pathParameters['levelIndex'] ?? '0') ?? 0;
+        final w = int.tryParse(state.pathParameters['worldIndex'] ?? '0') ?? 0;
+        final l = int.tryParse(state.pathParameters['levelIndex'] ?? '0') ?? 0;
         return LessonScreen(worldIndex: w, levelIndex: l);
       },
     ),
     GoRoute(
       path: '/result/:worldIndex/:levelIndex',
       builder: (context, state) {
-        final w = int.tryParse(
-            state.pathParameters['worldIndex'] ?? '0') ?? 0;
-        final l = int.tryParse(
-            state.pathParameters['levelIndex'] ?? '0') ?? 0;
+        final w = int.tryParse(state.pathParameters['worldIndex'] ?? '0') ?? 0;
+        final l = int.tryParse(state.pathParameters['levelIndex'] ?? '0') ?? 0;
         final score = state.extra as int? ?? 0;
         return ResultScreen(worldIndex: w, levelIndex: l, score: score);
       },
@@ -176,14 +249,12 @@ class _BackendSplash extends ConsumerWidget {
               width: 200,
               child: LinearProgressIndicator(
                 backgroundColor: StockDTheme.border,
-                valueColor:
-                    const AlwaysStoppedAnimation(StockDTheme.sage),
+                valueColor: const AlwaysStoppedAnimation(StockDTheme.sage),
               ),
             ),
             const SizedBox(height: 32),
             GestureDetector(
-              onTap: () =>
-                  ref.read(backendProvider.notifier).skipToOffline(),
+              onTap: () => ref.read(backendProvider.notifier).skipToOffline(),
               child: Text(
                 'Skip (run without SAGE)',
                 style: StockDTheme.labelSmall.copyWith(
@@ -231,9 +302,7 @@ class _ComingSoon extends StatelessWidget {
           const SizedBox(height: 14),
           Text(label, style: StockDTheme.headingLarge),
           const SizedBox(height: 8),
-          Text(sub,
-              style: StockDTheme.bodyLarge,
-              textAlign: TextAlign.center),
+          Text(sub, style: StockDTheme.bodyLarge, textAlign: TextAlign.center),
         ],
       ),
     );

@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../providers/progress_provider.dart';
 import '../models/curriculum.dart';
 import '../models/models.dart';
+import '../providers/sage_provider.dart';
 
 class Dashboard extends ConsumerWidget {
   const Dashboard({super.key});
@@ -222,7 +223,8 @@ class _ContinueCard extends StatelessWidget {
       onTap: () => context
           .go('/lesson/${activeWorld!.index}/${activeLevel!.levelIndex}'),
       child: Container(
-        height: 76,
+        // FIXED: Replaced rigid height: 76 with dynamic constraints and responsive padding
+        constraints: const BoxConstraints(minHeight: 76),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
@@ -236,7 +238,7 @@ class _ContinueCard extends StatelessWidget {
           border:
               Border.all(color: activeWorld.accentColor.withValues(alpha: 0.4)),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Row(
           children: [
             Text(_worldEmoji(activeWorld.index),
@@ -246,17 +248,30 @@ class _ContinueCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize
+                    .min, // Packs tightly to prevent flex boundary spills
                 children: [
                   Text('CONTINUE',
                       style: StockDTheme.labelSmall
                           .copyWith(color: activeWorld.accentColor)),
                   const SizedBox(height: 2),
-                  Text(activeLevel.title, style: StockDTheme.headingMedium),
-                  Text(activeLevel.subtitle,
-                      style: StockDTheme.bodyLarge.copyWith(fontSize: 11)),
+                  // FIXED: Enforced text maxLines and ellipsis scaling properties
+                  Text(
+                    activeLevel.title,
+                    style: StockDTheme.headingMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    activeLevel.subtitle,
+                    style: StockDTheme.bodyLarge.copyWith(fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
               ),
             ),
+            const SizedBox(width: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
@@ -646,44 +661,62 @@ class _MiniChart extends StatelessWidget {
 }
 
 // ── SAGE Status Card ──────────────────────────────────────────────────────────
-class _SageStatusCard extends StatelessWidget {
+// CHANGED: Converted to a ConsumerWidget to listen to your background process
+class _SageStatusCard extends ConsumerWidget {
   const _SageStatusCard();
 
   @override
-  Widget build(BuildContext context) {
-    const isOnline = false;
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 1. Read the real state from your sage_provider
+    final backendStatus = ref.watch(backendProvider);
+
+    final isOnline = backendStatus == BackendStatus.online;
+    final isStarting = backendStatus == BackendStatus.starting;
+
+    // 2. Dynamically update text and colors based on status
+    String titleText = 'SAGE OFFLINE';
+    Color titleColor = StockDTheme.textMuted;
+    String subtitleText = 'Activate your Conda env to link pipeline';
+    Color borderColor = StockDTheme.border;
+
+    if (isOnline) {
+      titleText = 'SAGE ONLINE';
+      titleColor = StockDTheme.sage;
+      subtitleText = 'ML backend connected · Ready to explain';
+      borderColor = StockDTheme.sage.withValues(alpha: 0.4);
+    } else if (isStarting) {
+      titleText = 'SAGE STARTING';
+      titleColor = StockDTheme.gold;
+      subtitleText = 'Initializing local model paths...';
+      borderColor = StockDTheme.gold.withValues(alpha: 0.4);
+    }
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: StockDTheme.card,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isOnline
-              ? StockDTheme.sage.withValues(alpha: 0.4)
-              : StockDTheme.border,
-        ),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         children: [
-          _PulseDot(online: isOnline),
+          // Passes true if online or starting so it visually stays active/pulses
+          _PulseDot(online: isOnline || isStarting),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isOnline ? 'SAGE ONLINE' : 'SAGE OFFLINE',
+                  titleText,
                   style: StockDTheme.headingMedium.copyWith(
                     fontSize: 12,
-                    color: isOnline ? StockDTheme.sage : StockDTheme.textMuted,
+                    color: titleColor,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  isOnline
-                      ? 'ML backend connected · Ready to explain'
-                      : 'Run: python3.12 -m uvicorn main:app --port 8000',
+                  subtitleText,
                   style: StockDTheme.bodyLarge.copyWith(fontSize: 11),
                 ),
               ],
