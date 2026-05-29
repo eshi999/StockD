@@ -65,7 +65,7 @@ jobs:
           cp -r $BUNDLE_DIR/* $DEB_ROOT/usr/lib/stockd/
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd
-          Version: 1.1.0
+          Version: 1.2.0
           Architecture: amd64
           Maintainer: Gautam Mahajan <mahajanga801@gmail.com>
           Description: Gamified stock market literacy app
@@ -99,7 +99,7 @@ jobs:
           cat > $RPM_ROOT/SPECS/stockd.spec << SPECEOF
           %global debug_package %{nil}
           Name: stockd
-          Version: 1.1.0
+          Version: 1.2.0
           Release: 1
           Summary: Gamified stock market literacy app
           License: Proprietary
