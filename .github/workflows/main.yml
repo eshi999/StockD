@@ -14,27 +14,49 @@ on:
           - macos
 
 jobs:
-
   # ─────────────────────────────────────────
-  # Linux x64 — .deb + .rpm
+  # Linux x64 — .deb + .rpm (FULL GITHUB CLOUD)
   # ─────────────────────────────────────────
   build-linux:
     name: Linux x64
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     if: inputs.target == 'linux'
-    env:
-      PATH: /home/gautam/development/flutter/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Flutter
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Linux System Dependencies
         run: |
-          if ! command -v flutter &> /dev/null; then
-            echo "Flutter not found on PATH"
-            exit 1
-          fi
-          flutter --version
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev rpm
+
+      - name: Set up Miniconda (Linux)
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: "3.12"
+          channels: conda-forge,defaults
+          activate-environment: stockd_env
+
+      - name: Install Python Stack & PyInstaller (Linux)
+        shell: bash -el {0}
+        run: |
+          conda install tensorflow scikit-learn pandas yfinance pyinstaller -y
+
+      - name: Build SAGE Backend (Linux Binary)
+        shell: bash -el {0}
+        run: |
+          cd ML
+          pyinstaller --name sage_backend \
+                      --onedir \
+                      --noconsole \
+                      --add-data "artifacts:artifacts" \
+                      --add-data "historical:historical" \
+                      main.py
 
       - run: flutter config --enable-linux-desktop
       - run: flutter pub get
@@ -45,6 +67,13 @@ jobs:
       - name: Build Flutter Linux app
         run: flutter build linux --release
 
+      - name: Inject SAGE into Linux Assets
+        run: |
+          TARGET_ASSET_DIR=build/linux/x64/release/bundle/data/flutter_assets/backend_bundle
+          mkdir -p $TARGET_ASSET_DIR
+          cp -r ML/dist/sage_backend $TARGET_ASSET_DIR/
+          chmod +x $TARGET_ASSET_DIR/sage_backend/sage_backend
+
       - name: Prepare bundle
         run: |
           RELEASE_DIR=build/linux/x64/release/bundle
@@ -54,19 +83,13 @@ jobs:
           fi
           mkdir -p build/linux/x64/bundle
           cp -r $RELEASE_DIR/* build/linux/x64/bundle/
-          echo "Linux bundle prepared"
 
       - name: Build .deb package
         run: |
           BUNDLE_DIR=build/linux/x64/bundle
           DEB_ROOT=build/linux/deb/stockd
 
-          mkdir -p $DEB_ROOT/DEBIAN
-          mkdir -p $DEB_ROOT/usr/bin
-          mkdir -p $DEB_ROOT/usr/lib/stockd
-          mkdir -p $DEB_ROOT/usr/share/applications
-          mkdir -p $DEB_ROOT/usr/share/icons/hicolor/256x256/apps
-
+          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/stockd $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/icons/hicolor/256x256/apps
           cp -r $BUNDLE_DIR/* $DEB_ROOT/usr/lib/stockd/
 
           cat > $DEB_ROOT/DEBIAN/control << EOF
@@ -99,13 +122,11 @@ jobs:
           fi
 
           dpkg-deb --root-owner-group --build $DEB_ROOT stockd-linux-x64.deb
-          echo "Built stockd-linux-x64.deb"
 
       - name: Build .rpm package
         run: |
           BUNDLE_DIR=$(pwd)/build/linux/x64/bundle
           RPM_ROOT=$HOME/rpmbuild
-
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS,SRPMS}
 
           ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
@@ -135,11 +156,7 @@ jobs:
           %setup -q
 
           %install
-          mkdir -p %{buildroot}/usr/lib/stockd
-          mkdir -p %{buildroot}/usr/bin
-          mkdir -p %{buildroot}/usr/share/applications
-          mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
-
+          mkdir -p %{buildroot}/usr/lib/stockd %{buildroot}/usr/bin %{buildroot}/usr/share/applications %{buildroot}/usr/share/icons/hicolor/256x256/apps
           cp -r * %{buildroot}/usr/lib/stockd/
 
           cat > %{buildroot}/usr/bin/stockd << EOF
@@ -168,13 +185,8 @@ jobs:
           /usr/share/icons/hicolor/256x256/apps/stockd.png
           SPECEOF
 
-          rpmbuild -bb \
-            --define "_dbpath $HOME/.rpmdb" \
-            --define "_topdir $RPM_ROOT" \
-            $RPM_ROOT/SPECS/stockd.spec
-
+          rpmbuild -bb $RPM_ROOT/SPECS/stockd.spec
           find $RPM_ROOT/RPMS -name "*.rpm" -exec cp {} stockd-linux-x64.rpm \;
-          echo "Built stockd-linux-x64.rpm"
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
@@ -189,7 +201,7 @@ jobs:
           path: stockd-linux-x64.rpm
 
   # ─────────────────────────────────────────
-  # macOS arm64 — Apple Silicon build (macos-15)
+  # macOS arm64 — Apple Silicon build (GITHUB CLOUD)
   # ─────────────────────────────────────────
   build-macos-arm64:
     name: macOS arm64 (Apple Silicon)
@@ -198,10 +210,34 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
+      - name: Set up Miniconda (macOS)
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: "3.12"
+          channels: conda-forge,defaults
+          activate-environment: stockd_env
+
+      - name: Install Python Stack & PyInstaller (macOS)
+        shell: bash -el {0}
+        run: |
+          conda install tensorflow scikit-learn pandas yfinance pyinstaller -y
+
+      - name: Build SAGE Backend (macOS Binary)
+        shell: bash -el {0}
+        run: |
+          cd ML
+          pyinstaller --name sage_backend \
+                      --onedir \
+                      --noconsole \
+                      --add-data "artifacts:artifacts" \
+                      --add-data "historical:historical" \
+                      main.py
 
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
@@ -214,24 +250,22 @@ jobs:
         env:
           FLUTTER_XCODE_ARCHS: arm64
 
-      - name: Verify architecture
+      - name: Inject SAGE into App Bundle Assets
         run: |
-          lipo -info build/macos/Build/Products/Release/StockD.app/Contents/MacOS/StockD
+          TARGET_ASSET_DIR="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+          mkdir -p "$TARGET_ASSET_DIR"
+          cp -R ML/dist/sage_backend "$TARGET_ASSET_DIR/"
+          chmod +x "$TARGET_ASSET_DIR/sage_backend/sage_backend"
+
+      - name: Verify architecture
+        run: lipo -info build/macos/Build/Products/Release/StockD.app/Contents/MacOS/StockD
 
       - name: Build arm64 .dmg
         run: |
           mkdir -p dmg_staging
           cp -R build/macos/Build/Products/Release/StockD.app dmg_staging/StockD.app
           ln -s /Applications dmg_staging/Applications
-
-          hdiutil create \
-            -volname "StockD" \
-            -srcfolder dmg_staging \
-            -ov \
-            -format UDZO \
-            stockd-macos-arm64.dmg
-
-          echo "Built stockd-macos-arm64.dmg"
+          hdiutil create -volname "StockD" -srcfolder dmg_staging -ov -format UDZO stockd-macos-arm64.dmg
 
       - name: Upload arm64 .dmg artifact
         uses: actions/upload-artifact@v4
@@ -240,24 +274,20 @@ jobs:
           path: stockd-macos-arm64.dmg
 
   # ─────────────────────────────────────────
-  # Windows x64 — NSIS installer
+  # Windows x64 — NSIS installer (FULL GITHUB CLOUD)
   # ─────────────────────────────────────────
   build-windows:
     name: Windows x64
-    runs-on: [self-hosted, windows]
+    runs-on: windows-latest
     if: inputs.target == 'windows'
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Flutter
-        shell: powershell
-        run: |
-          if (-Not (Get-Command flutter -ErrorAction SilentlyContinue)) {
-            Write-Error "Flutter not found on PATH"
-            exit 1
-          }
-          flutter --version
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
       - name: Enable Windows desktop
         shell: powershell
@@ -271,43 +301,62 @@ jobs:
         shell: powershell
         run: flutter pub run flutter_launcher_icons
 
+      - name: Set up Miniconda (Windows)
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: "3.12"
+          channels: conda-forge,defaults
+          activate-environment: stockd_env
+
+      - name: Install Python Stack & PyInstaller (Windows)
+        shell: powershell {0}
+        run: |
+          conda install tensorflow scikit-learn pandas yfinance pyinstaller -y
+
+      - name: Build SAGE Backend (Windows Executable)
+        shell: powershell {0}
+        run: |
+          cd ML
+          pyinstaller --name sage_backend `
+                      --onedir `
+                      --noconsole `
+                      --add-data "artifacts;artifacts" `
+                      --add-data "historical;historical" `
+                      main.py
+
       - name: Build Flutter Windows app
         shell: powershell
         run: flutter build windows --release
+
+      - name: Inject SAGE into Windows Release Runner Folder
+        shell: powershell
+        run: |
+          $assetsPath = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
+          if (-Not (Test-Path $assetsPath)) {
+              New-Item -ItemType Directory -Force -Path $assetsPath
+          }
+          Copy-Item -Path "ML\dist\sage_backend" -Destination $assetsPath -Recurse -Force
 
       - name: Copy Flutter Windows build
         shell: powershell
         run: |
           $bundlePath = "build\windows\x64\bundle"
           New-Item -ItemType Directory -Force -Path $bundlePath
-
           $releaseDir = "build\windows\x64\runner\Release"
-          if (-Not (Test-Path $releaseDir)) {
-              Write-Error "Release directory not found: $releaseDir"
-              exit 1
-          }
-
           Copy-Item -Path "$releaseDir\*" -Destination $bundlePath -Recurse -Force
-          Write-Host "Windows bundle prepared at $bundlePath"
 
       - name: Build NSIS installer
         shell: powershell
         run: |
           $iconSrc = "windows\runner\resources\app_icon.ico"
           $iconDst = "build\windows\x64\bundle\app_icon.ico"
-          if (-Not (Test-Path $iconSrc)) {
-              Write-Error "App icon not found: $iconSrc"
-              exit 1
-          }
           Copy-Item $iconSrc $iconDst -Force
 
           @'
           Name "StockD"
           OutFile "stockd-windows-x64-setup.exe"
           InstallDir "$PROGRAMFILES64\StockD"
-
           Icon "build\windows\x64\bundle\app_icon.ico"
-
           Section
             SetOutPath "$INSTDIR"
             File /r "build\windows\x64\bundle\*.*"
