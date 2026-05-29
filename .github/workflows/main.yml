@@ -55,14 +55,15 @@ jobs:
           TARGET_ASSET_DIR=build/linux/x64/release/bundle/data/flutter_assets/backend_bundle
           mkdir -p $TARGET_ASSET_DIR
           cp -r ML/dist/sage_backend/* $TARGET_ASSET_DIR/
+          find $TARGET_ASSET_DIR -name "*.pyx" -type f -delete
+          find $TARGET_ASSET_DIR -name "tests" -type d -exec rm -rf {} +
           mkdir -p build/linux/x64/bundle
           cp -r build/linux/x64/release/bundle/* build/linux/x64/bundle/
       - name: Build .deb package
         run: |
-          BUNDLE_DIR=build/linux/x64/bundle
           DEB_ROOT=build/linux/deb/stockd
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/stockd $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/icons/hicolor/256x256/apps
-          tar -C $BUNDLE_DIR -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/stockd/
+          tar -C build/linux/x64/bundle -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/stockd/
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd
           Version: 1.2.0
@@ -84,8 +85,6 @@ jobs:
           Type=Application
           Categories=Education;Finance;
           EOF
-          ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
-          if [ -f "$ICON_SRC" ]; then cp $ICON_SRC $DEB_ROOT/usr/share/icons/hicolor/256x256/apps/stockd.png; fi
           dpkg-deb --root-owner-group -Znone --build $DEB_ROOT stockd-linux-x64.deb
       - name: Build .rpm package
         run: |
@@ -114,9 +113,9 @@ jobs:
           exec /usr/lib/stockd/stockd "\$@"
           EOF
           chmod +x %{buildroot}/usr/bin/stockd
-          %files
-          /usr/bin/stockd
-          /usr/lib/stockd/
+          find %{buildroot} -not -type d | sed 's|^%{buildroot}||' > list_files
+          %files -f list_files
+          %defattr(-,root,root,-)
           SPECEOF
           rpmbuild -bb $RPM_ROOT/SPECS/stockd.spec
           find $RPM_ROOT/RPMS -name "*.rpm" -exec cp {} stockd-linux-x64.rpm \;
