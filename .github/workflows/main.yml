@@ -44,7 +44,7 @@ jobs:
       - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts:artifacts" main.py
+          python -m PyInstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts:artifacts" main.py
       - run: |
           flutter config --enable-linux-desktop
           flutter pub get
@@ -144,6 +144,7 @@ jobs:
       - name: Build SAGE Backend
         run: |
           cd ML
+          python -m pip install pyinstaller
           python -m PyInstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts:artifacts" main.py
       - run: |
           flutter config --enable-macos-desktop
@@ -173,6 +174,7 @@ jobs:
       - name: Build SAGE Backend
         run: |
           cd ML
+          python -m pip install pyinstaller
           python -m PyInstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts:artifacts" main.py
       - run: |
           flutter config --enable-macos-desktop
@@ -210,7 +212,7 @@ jobs:
       - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts;artifacts" main.py
+          python -m PyInstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts;artifacts" main.py
       - run: |
           flutter config --enable-windows-desktop
           flutter pub get
