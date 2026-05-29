@@ -43,6 +43,7 @@ jobs:
           channels: conda-forge,defaults
           activate-environment: stockd_env
 
+      # Standard bash login hooks handle Linux context pathways perfectly
       - name: Install Hardware Accelerated Python Stack (Linux)
         shell: bash -el {0}
         run: |
@@ -223,11 +224,12 @@ jobs:
           channels: conda-forge,defaults
           activate-environment: stockd_env
 
+      # FIXED: Uses $CONDA_PREFIX pointer tracking to force isolation on macOS nodes
       - name: Install Python Stack & tensorflow-metal (macOS Acceleration Matrix)
         shell: bash -el {0}
         run: |
           conda install tensorflow scikit-learn pandas yfinance pyinstaller -y
-          python -m pip install tensorflow-metal
+          $CONDA_PREFIX/bin/python -m pip install tensorflow-metal
 
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
@@ -308,12 +310,11 @@ jobs:
           channels: conda-forge,defaults
           activate-environment: stockd_env
 
+      # FIXED: Uses powershell execution context pointers to enforce isolation on Windows nodes
       - name: Install Windows GPU Accelerated Python Stack
         shell: powershell {0}
         run: |
           conda install scikit-learn pandas yfinance pyinstaller pip -y
-          
-          # FIXED: Forced execution context routing via environment prefixes to avoid path conflicts
           & "$env:CONDA_PREFIX\python.exe" -m pip install tensorflow-cpu==2.15.0
           & "$env:CONDA_PREFIX\python.exe" -m pip install tensorflow-directml-plugin
 
