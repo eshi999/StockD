@@ -1,14 +1,13 @@
-# sage_bridge.py — SAGE ML bridge for FastAPI
-import glob
+# sage_bridge.py — SAGE ML bridge for FastAPI (100% On-The-Fly Data Engine)
 import sys
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
+import yfinance as yf
 
 ML_DIR = Path(__file__).resolve().parent
-HIST_DIR = ML_DIR / "historical"
 sys.path.insert(0, str(ML_DIR))
 
 from ml_config import CALIBRATION_PATH, FEATURE_COLS, SCALER_PATH, WINDOW_SIZE
@@ -23,6 +22,9 @@ _calibrator = None
 
 def safe_float(val, default: float = 0.0) -> float:
     try:
+        # Handle cases where pandas returns a series or array with one value
+        if hasattr(val, "item"):
+            val = val.item()
         v = float(val)
         return v if v == v else default
     except Exception:
@@ -39,6 +41,63 @@ def safe_round(val, digits: int = 2, default: float = 0.0) -> float:
     if v != v:
         return default
     return round(v, digits)
+
+
+# ── Technical Indicator Calculators (Replacing Local File Precomputations) ───
+
+
+def _compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Computes technical indicators dynamically on memory-resident pandas frames.
+    Replicates original pipeline feature engineering metrics cleanly.
+    """
+    df = df.copy()
+
+    # 1. Simple Moving Averages
+    df["SMA_50"] = df["Close"].rolling(window=50, min_periods=1).mean()
+    df["SMA_200"] = df["Close"].rolling(window=200, min_periods=1).mean()
+
+    # 2. Relative Strength Index (RSI 14)
+    delta = df["Close"].diff()
+    gain = delta.clip(lower=0).rolling(window=14, min_periods=1).mean()
+    loss = (-delta.clip(upper=0)).rolling(window=14, min_periods=1).mean()
+    rs = gain / (loss + 1e-9)
+    df["RSI_14"] = 100 - (100 / (1 + rs))
+    # Backfill initial NaN row to avoid array fragmentation issues
+    df["RSI_14"] = df["RSI_14"].fillna(50.0)
+
+    # 3. Returns and Volatility Calculations
+    df["Daily_Return"] = df["Close"].pct_change().fillna(0.0)
+    df["Volatility_20"] = (
+        df["Daily_Return"].rolling(window=20, min_periods=1).std().fillna(0.0)
+    )
+
+    return df
+
+
+def _fetch_live_dataframe(ticker: str, period: str = "2y") -> pd.DataFrame:
+    """
+    Safe proxy loop that downloads ticker metrics on demand via yfinance APIs.
+    Removes disk space requirements and legal redistribution grey areas.
+    """
+    try:
+        clean_symbol = ticker.strip().upper()
+        # Download data silently without verbose log pollution
+        df = yf.download(clean_symbol, period=period, auto_adjust=True, progress=False)
+
+        if df.empty:
+            return pd.DataFrame()
+
+        # Clean up Pandas MultiIndex columns if present in current yfinance version structures
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        df = df.reset_index()
+        df = _compute_technical_indicators(df)
+        return df
+    except Exception as e:
+        print(f"[SAGE] Direct API fetch warning for {ticker}: {e}")
+        return pd.DataFrame()
 
 
 # ── Model Loading ─────────────────────────────────────────────────────────────
@@ -104,72 +163,66 @@ def load_model() -> bool:
     return False
 
 
-# ── CSV Helpers ───────────────────────────────────────────────────────────────
-
-
-def _load_ticker_csv(ticker: str) -> pd.DataFrame:
-    pattern = str(HIST_DIR / "*" / f"{ticker}-*.csv")
-    files = sorted(glob.glob(pattern))
-    if not files:
-        return pd.DataFrame()
-    dfs = []
-    for f in files:
-        try:
-            dfs.append(pd.read_csv(f, parse_dates=["Date"]))  # type: ignore[call-overload]
-        except Exception:
-            pass
-    if not dfs:
-        return pd.DataFrame()
-    df = pd.concat(dfs, ignore_index=True)
-    df = df.drop_duplicates(subset=["Date"]).sort_values("Date").reset_index(drop=True)
-    return df
-
-
-def _latest_non_empty_year_dir() -> Optional[Path]:
-    if not HIST_DIR.exists():
-        return None
-    year_dirs = sorted(
-        [d for d in HIST_DIR.iterdir() if d.is_dir()],
-        reverse=True,
-    )
-    for d in year_dirs:
-        if any(d.glob("*-*.csv")):
-            return d
-    return None
-
-
 # ── Market Snapshot ───────────────────────────────────────────────────────────
 
 
 def get_market_snapshot() -> list:
-    latest_dir = _latest_non_empty_year_dir()
-    if latest_dir is None:
-        return []
-
+    """
+    Builds a high-conviction live snapshot of prominent S&P bellwethers dynamically.
+    Completely decoupled from the static historical storage subfolders.
+    """
+    core_anchors = [
+        "SPY",
+        "AAPL",
+        "MSFT",
+        "GOOGL",
+        "AMZN",
+        "NVDA",
+        "META",
+        "TSLA",
+        "JPM",
+        "V",
+    ]
     results = []
-    for fpath in sorted(latest_dir.glob("*-*.csv")):
-        ticker = fpath.stem.rsplit("-", 1)[0]
-        try:
-            df = pd.read_csv(
-                fpath,
-                usecols=lambda c: c in {"Daily_Return", "Sector"},  # type: ignore[call-overload]
-            )
-            if df.empty:
+
+    # Download batch matrix to limit request connection overhead times
+    try:
+        batch_df = yf.download(
+            core_anchors, period="5d", auto_adjust=True, progress=False
+        )
+        if batch_df.empty:
+            return []
+
+        for ticker in core_anchors:
+            try:
+                if isinstance(batch_df.columns, pd.MultiIndex):
+                    close_series = batch_df["Close"][ticker].dropna()
+                else:
+                    close_series = batch_df["Close"].dropna()
+
+                if len(close_series) < 2:
+                    continue
+
+                price = float(close_series.iloc[-1])
+                prev_close = float(close_series.iloc[-2])
+                pct = ((price - prev_close) / prev_close) * 100.0
+
+                sign = "+" if pct >= 0 else ""
+                results.append(
+                    {
+                        "ticker": ticker,
+                        "change": f"{sign}{pct:.2f}%",
+                        "up": bool(pct >= 0),
+                        "sector": "S&P 500 Index Component"
+                        if ticker == "SPY"
+                        else "Market Leader",
+                    }
+                )
+            except Exception:
                 continue
-            row = df.iloc[-1]
-            pct = safe_float(row.get("Daily_Return", 0.0)) * 100.0
-            sign = "+" if pct >= 0 else ""
-            sector = str(row.get("Sector", "")) if "Sector" in df.columns else ""
-            results.append(
-                {
-                    "ticker": ticker,
-                    "change": f"{sign}{pct:.2f}%",
-                    "up": bool(pct >= 0),
-                    "sector": sector,
-                }
-            )
-        except Exception:
-            continue
+    except Exception as e:
+        print(f"[SAGE] Snapshot batch assembly failure: {e}")
+        return []
 
     results.sort(
         key=lambda x: abs(safe_float(x["change"].replace("%", "").replace("+", ""))),
@@ -182,11 +235,17 @@ def get_market_snapshot() -> list:
 
 
 def get_stock_history(ticker: str, timeframe: str = "1Y") -> dict:
-    df = _load_ticker_csv(ticker)
+    """
+    Downloads historical timeline configurations on the fly. Matches key bindings
+    and array names exactly with Flutter fl_chart serializations.
+    """
+    df = _fetch_live_dataframe(ticker, period="2y")
     if df.empty:
         return {"error": "no_local_data"}
 
-    n_rows = {"1D": 1, "1W": 5, "1M": 21, "3M": 63, "1Y": 252}.get(timeframe, 252)
+    n_rows = {"1D": 2, "1W": 5, "1M": 21, "3M": 63, "1Y": 252}.get(timeframe, 252)
+
+    # Ensure dataframe limits don't overflow smaller asset profiles
     df_slice = df.tail(n_rows).reset_index(drop=True)
     df_1y = df.tail(252)
 
@@ -211,10 +270,10 @@ def get_stock_history(ticker: str, timeframe: str = "1Y") -> dict:
     low_52w = safe_float(df_1y["Low"].min())
     avg_vol = safe_int(df_1y["Volume"].mean() if "Volume" in df_1y.columns else 0)
 
-    _company = last.get("Company_Name", None)
-    company_name = str(_company) if _company and str(_company) != "nan" else ticker
-    sector = str(last.get("Sector", "") or "")
-    industry = str(last.get("Industry", "") or "")
+    company_name = ticker
+    sector = "Public Equities Market Asset"
+    industry = "Global Exchange Tracked"
+
     rsi = safe_float(last["RSI_14"])
     sma_50 = safe_float(last["SMA_50"])
     sma_200 = safe_float(last["SMA_200"])
@@ -256,29 +315,9 @@ def _run_model(ticker: str) -> dict:
     if _model is None:
         return {"error": "model_not_loaded"}
 
-    df = _load_ticker_csv(ticker)
-
-    if df.empty or len(df) < WINDOW_SIZE + 10:
-        try:
-            import yfinance as yf
-
-            raw = yf.download(ticker, period="2y", auto_adjust=True, progress=False)
-            if raw is None or raw.empty or len(raw) < WINDOW_SIZE + 10:
-                return {"error": "insufficient_data"}
-            if isinstance(raw.columns, pd.MultiIndex):
-                raw.columns = [col[0] for col in raw.columns]  # type: ignore[assignment]
-            df = raw.copy()
-            df["SMA_50"] = df["Close"].rolling(50).mean()
-            df["SMA_200"] = df["Close"].rolling(200).mean()
-            delta = df["Close"].diff()
-            gain = delta.clip(lower=0).rolling(14).mean()
-            loss = (-delta.clip(upper=0)).rolling(14).mean()
-            df["RSI_14"] = 100 - (100 / (1 + gain / (loss + 1e-9)))
-            df["Daily_Return"] = df["Close"].pct_change()
-            df["Volatility_20"] = df["Daily_Return"].rolling(20).std()
-            df = df.dropna()
-        except Exception:
-            return {"error": "insufficient_data"}
+    df = _fetch_live_dataframe(ticker, period="2y")
+    if df.empty or len(df) < WINDOW_SIZE:
+        return {"error": "insufficient_data"}
 
     df = df.dropna(subset=FEATURE_COLS)
     if len(df) < WINDOW_SIZE:
@@ -378,28 +417,22 @@ interact over time.
 
 
 def chat(message: str, history: list[dict]) -> str:
-    """
-    Educational stock market chatbot.
-    Answers concept questions and shows real data for S&P 500 tickers.
-    Never gives buy/sell advice.
-    """
     msg_lower = message.lower().strip()
     words = message.upper().split()
 
-    # ── Try to find a ticker in the message ──────────────────────────────────
     ticker_data = None
     found_ticker = None
 
+    # Parse and validate tickers directly using the real API layer instead of a directory trace
     for word in words:
         clean = word.strip("?.,!()\"'")
         if 1 <= len(clean) <= 5 and clean.isalpha():
-            df = _load_ticker_csv(clean)
-            if not df.empty:
+            test_data = get_stock_history(clean, timeframe="1M")
+            if "error" not in test_data:
                 found_ticker = clean
-                ticker_data = get_stock_history(clean, timeframe="1M")
+                ticker_data = test_data
                 break
 
-    # ── Ticker-specific responses ─────────────────────────────────────────────
     if found_ticker and ticker_data and "error" not in ticker_data:
         t = ticker_data
         price = t.get("price", 0)
@@ -413,7 +446,6 @@ def chat(message: str, history: list[dict]) -> str:
         name = t.get("company_name", found_ticker)
         sector = t.get("sector", "N/A")
 
-        # RSI question
         if "rsi" in msg_lower:
             condition = (
                 "overbought territory (above 70)"
@@ -430,7 +462,6 @@ def chat(message: str, history: list[dict]) -> str:
                 f"⚠️ Educational information only, not financial advice."
             )
 
-        # Volatility / risk question
         if any(w in msg_lower for w in ["volatil", "risk", "stable", "swing"]):
             level = "high" if vol > 40 else "moderate" if vol > 20 else "low"
             return (
@@ -441,7 +472,6 @@ def chat(message: str, history: list[dict]) -> str:
                 f"⚠️ Educational information only, not financial advice."
             )
 
-        # Moving average / trend question
         if any(w in msg_lower for w in ["sma", "moving average", "trend", "200", "50"]):
             t50 = "above" if price > sma50 else "below"
             t200 = "above" if price > sma200 else "below"
@@ -454,7 +484,6 @@ def chat(message: str, history: list[dict]) -> str:
                 f"⚠️ Educational information only, not financial advice."
             )
 
-        # 52-week range question
         if any(w in msg_lower for w in ["52", "high", "low", "range", "year"]):
             pct_from_low = ((price - l52) / l52 * 100) if l52 else 0
             return (
@@ -465,7 +494,6 @@ def chat(message: str, history: list[dict]) -> str:
                 f"⚠️ Educational information only, not financial advice."
             )
 
-        # General ticker info
         return (
             f"Here's what I know about {found_ticker} ({name}):\n\n"
             f"• Sector:       {sector}\n"
@@ -482,113 +510,30 @@ def chat(message: str, history: list[dict]) -> str:
 
     # ── Concept explanations ──────────────────────────────────────────────────
     concepts: dict[str, str] = {
-        "p/e": (
-            "The Price-to-Earnings (P/E) ratio compares a stock's price to its "
-            "earnings per share (EPS). A higher P/E suggests investors expect "
-            "stronger future growth. It varies significantly by sector."
-        ),
-        "market cap": (
-            "Market cap = share price × shares outstanding. It represents the "
-            "total market value of a company.\n"
-            "• Large-cap: >$10B\n• Mid-cap: $2B–$10B\n• Small-cap: <$2B"
-        ),
-        "dividend": (
-            "A dividend is a portion of profits paid to shareholders, usually "
-            "quarterly. Dividend yield = (annual dividend ÷ price) × 100. "
-            "Not all companies pay dividends."
-        ),
-        "short selling": (
-            "Short selling = borrowing shares, selling them, then buying them "
-            "back later hoping the price fell. Profit comes from the price "
-            "difference. Losses are theoretically unlimited if the price rises."
-        ),
-        "etf": (
-            "An ETF (Exchange-Traded Fund) is a basket of securities that "
-            "trades on an exchange like a single stock. ETFs offer "
-            "diversification and typically have lower fees than mutual funds."
-        ),
-        "bull market": (
-            "A bull market is a sustained period of rising prices — typically "
-            "defined as a 20%+ rise from recent lows. Associated with economic "
-            "growth and investor optimism."
-        ),
-        "bear market": (
-            "A bear market is a sustained period of falling prices — typically "
-            "defined as a 20%+ decline from recent highs. Associated with "
-            "economic slowdown and investor pessimism."
-        ),
-        "volume": (
-            "Trading volume is the number of shares traded in a given period. "
-            "High volume confirms price moves; low volume may indicate weak "
-            "conviction behind a move."
-        ),
-        "rsi": (
-            "RSI (Relative Strength Index) is a momentum oscillator ranging "
-            "0–100. Readings above 70 are considered overbought, below 30 "
-            "oversold. It measures the speed of recent price changes."
-        ),
-        "sma": (
-            "SMA (Simple Moving Average) smooths price data by averaging "
-            "closing prices over N days. Common periods: 50-day (medium-term "
-            "trend) and 200-day (long-term trend)."
-        ),
-        "ema": (
-            "EMA (Exponential Moving Average) is like an SMA but gives more "
-            "weight to recent prices, making it react faster to price changes."
-        ),
-        "candlestick": (
-            "A candlestick shows four prices for a period: Open, High, Low, "
-            "Close. The body shows open-to-close range; wicks show the "
-            "high and low extremes."
-        ),
-        "support": (
-            "Support is a price level where buying interest has historically "
-            "been strong enough to prevent further decline. It's a floor "
-            "that price tends to bounce from."
-        ),
-        "resistance": (
-            "Resistance is a price level where selling pressure has "
-            "historically prevented further rise. It's a ceiling that "
-            "price struggles to break through."
-        ),
-        "volatility": (
-            "Volatility measures the degree of price variation over time. "
-            "High volatility = large price swings. Annualized volatility "
-            "expresses daily moves as a yearly percentage."
-        ),
-        "ipo": (
-            "An IPO (Initial Public Offering) is when a private company "
-            "first sells shares to the public, listing on a stock exchange "
-            "to raise capital."
-        ),
-        "earnings": (
-            "Earnings (EPS = Earnings Per Share) represent a company's profit "
-            "divided by shares outstanding. Companies report earnings quarterly. "
-            "Earnings beats or misses often cause large price moves."
-        ),
-        "market cap": (
-            "Market capitalization = share price × total shares outstanding. "
-            "Represents the total value the market assigns to a company."
-        ),
-        "liquidity": (
-            "Liquidity refers to how easily a stock can be bought or sold "
-            "without significantly affecting its price. High-volume stocks "
-            "like Apple are highly liquid."
-        ),
-        "bid ask": (
-            "The bid is the highest price a buyer will pay; the ask is the "
-            "lowest price a seller will accept. The spread between them is "
-            "the market maker's profit and a transaction cost for traders."
-        ),
+        "p/e": "The Price-to-Earnings (P/E) ratio compares a stock's price to its earnings per share (EPS).",
+        "market cap": "Market cap = share price × shares outstanding. Represents total company value.\n• Large-cap: >$10B\n• Mid-cap: $2B–$10B\n• Small-cap: <$2B",
+        "dividend": "A dividend is a portion of profits paid to shareholders, usually quarterly.",
+        "short selling": "Short selling = borrowing shares, selling them, then buying them back cheaper later.",
+        "etf": "An ETF (Exchange-Traded Fund) is a basket of securities trading on an exchange like a stock.",
+        "bull market": "A bull market is a sustained period of rising prices (typically 20%+ from lows).",
+        "bear market": "A bear market is a sustained period of falling prices (typically 20%+ from highs).",
+        "volume": "Trading volume is the number of shares traded in a given timeframe.",
+        "rsi": "RSI (Relative Strength Index) is a momentum oscillator measuring price velocity (0-100).",
+        "sma": "SMA smooths price metrics by averaging specific calendar blocks (50 and 200 days).",
+        "ema": "EMA is a moving average that applies higher weighting multipliers to recent price events.",
+        "candlestick": "A candlestick indicates open, high, low, and close coordinates for a defined interval.",
+        "support": "Support acts as a price floor where concentrated demand halts declines.",
+        "resistance": "Resistance acts as a price ceiling where concentrated supply stalls upward growth.",
+        "volatility": "Volatility quantifies tracking variance over fixed standard deviation timelines.",
+        "ipo": "An IPO occurs when a company changes from private to open public capital listings.",
+        "earnings": "Earnings reveal standard profitability matrices released quarterly by corporations.",
+        "liquidity": "Liquidity refers to how smoothly an asset trades without forcing deep spreads.",
+        "bid ask": "The bid is the buyers ceiling; the ask is the sellers baseline floor map.",
     }
 
     for keyword, explanation in concepts.items():
         if keyword in msg_lower:
-            return (
-                f"**{keyword.upper()}**\n\n"
-                f"{explanation}\n\n"
-                f"⚠️ Educational information only, not financial advice."
-            )
+            return f"**{keyword.upper()}**\n\n{explanation}\n\n⚠️ Educational information only, not financial advice."
 
     # ── Advice guard ──────────────────────────────────────────────────────────
     advice_words = [
@@ -610,7 +555,6 @@ def chat(message: str, history: list[dict]) -> str:
             "What would you like to learn about?"
         )
 
-    # ── Default ───────────────────────────────────────────────────────────────
     return (
         "I'm SAGE — your stock market education assistant.\n\n"
         "I can help you with:\n"

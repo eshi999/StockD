@@ -85,7 +85,8 @@ def chat(req: ChatMessage):
         "response": response,
         "disclaimer": "Educational information only. Not financial advice.",
     }
-    
+
+
 if __name__ == "__main__":
     import uvicorn
 
