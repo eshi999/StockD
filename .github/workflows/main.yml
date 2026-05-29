@@ -59,8 +59,9 @@ jobs:
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/stockd
           tar -C build/linux/x64/bundle -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/stockd/
           dpkg-deb --root-owner-group --build $DEB_ROOT stockd-linux-x64.deb
+          
           RPM_ROOT=$HOME/rpmbuild
-          mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILDROOT,RPMS}
+          mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS}
           tar -czf $RPM_ROOT/SOURCES/stockd-1.2.0.tar.gz -C build/linux/x64/bundle .
           cat > $RPM_ROOT/SPECS/stockd.spec << EOF
           %global __requires_exclude_from ^/usr/lib/stockd/.*$
@@ -69,6 +70,7 @@ jobs:
           Release: 1
           Summary: StockD App
           BuildArch: x86_64
+          License: Proprietary
           %description
           AI Coach.
           %prep
@@ -76,14 +78,16 @@ jobs:
           %install
           mkdir -p %{buildroot}/usr/lib/stockd
           cp -r ./* %{buildroot}/usr/lib/stockd/
-          find %{buildroot} -not -type d | sed 's|^%{buildroot}||' > list_files
-          %files -f list_files
+          %files
+          /usr/lib/stockd
           EOF
           rpmbuild -bb $RPM_ROOT/SPECS/stockd.spec
       - uses: actions/upload-artifact@v4
-        with: {name: stockd-linux-pkgs, path: |
-          stockd-linux-x64.deb
-          $HOME/rpmbuild/RPMS/x86_64/stockd-1.2.0-1.x86_64.rpm}
+        with: 
+          name: stockd-linux-pkgs
+          path: |
+            stockd-linux-x64.deb
+            /home/runner/rpmbuild/RPMS/x86_64/stockd-1.2.0-1.x86_64.rpm
 
   package-macos-intel:
     needs: build-backend
@@ -131,23 +135,17 @@ jobs:
         with: {channel: stable}
       - uses: actions/download-artifact@v4
         with: {name: sage-backend-bundle, path: backend}
-      # 1. Build the Flutter App
       - run: |
           flutter config --enable-windows-desktop
           flutter build windows --release
-      # 2. Setup the Installer Directory
-      - shell: powershell
-        run: |
           $bundlePath = "build\windows\x64\runner\Release"
           $assetsPath = "$bundlePath\data\flutter_assets\backend_bundle"
           New-Item -ItemType Directory -Force -Path $assetsPath
           Copy-Item -Path "backend\*" -Destination $assetsPath -Recurse
-      # 3. Install NSIS via dedicated action
       - name: Install NSIS
         uses: repolevedavaj/install-nsis@v1.0.3
         with:
           nsis-version: '3.11'
-      # 4. Generate & Run Script
       - shell: powershell
         run: |
           @"
@@ -158,8 +156,3 @@ jobs:
             SetOutPath "$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
             CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe"
-          SectionEnd
-          "@ | Out-File -Encoding ASCII stockd.nsi
-          makensis.exe stockd.nsi
-      - uses: actions/upload-artifact@v4
-        with: {name: stockd-windows-x64, path: stockd-windows-x64-setup.exe}
