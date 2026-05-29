@@ -44,7 +44,17 @@ jobs:
       - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend --onefile --noconsole --add-data "artifacts:artifacts" main.py
+          # 1. --runtime-tmpdir /tmp forces temp files to a fast partition
+          # 2. --collect-all tensorflow forces it to use pre-defined hooks for TF (faster)
+          # 3. --clean ensures no stale build files are competing for space
+          pyinstaller --name sage_backend \
+                      --onefile \
+                      --noconsole \
+                      --clean \
+                      --runtime-tmpdir=/tmp \
+                      --collect-all tensorflow \
+                      --add-data "artifacts:artifacts" \
+                      main.py
       - run: |
           flutter config --enable-linux-desktop
           flutter pub get
