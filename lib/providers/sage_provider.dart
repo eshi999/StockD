@@ -61,14 +61,6 @@ class BackendNotifier extends Notifier<BackendStatus> {
           mode: ProcessStartMode
               .normal, // Changed from detached to allow clean kills
         );
-
-        _process!.stdout.transform(SystemEncoding().decoder).listen((data) {
-          debugPrint('🐍 PYTHON STDOUT: $data');
-        });
-
-        _process!.stderr.transform(SystemEncoding().decoder).listen((data) {
-          debugPrint('❌ PYTHON STDERR: $data');
-        });
       }
 
       for (int i = 0; i < 20; i++) {
