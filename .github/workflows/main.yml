@@ -86,7 +86,6 @@ jobs:
           EOF
           ICON_SRC=$BUNDLE_DIR/data/flutter_assets/assets/images/StockD.png
           if [ -f "$ICON_SRC" ]; then cp $ICON_SRC $DEB_ROOT/usr/share/icons/hicolor/256x256/apps/stockd.png; fi
-          # FIXED: -Znone disables compression to prevent build hangs
           dpkg-deb --root-owner-group -Znone --build $DEB_ROOT stockd-linux-x64.deb
       - name: Build .rpm package
         run: |
@@ -183,11 +182,6 @@ jobs:
     if: inputs.target == 'windows'
     steps:
       - uses: actions/checkout@v4
-      - name: Free up disk space
-        shell: powershell
-        run: |
-          Remove-Item -Path "C:\Program Files (x86)\Android\android-sdk" -Force -Recurse -ErrorAction SilentlyContinue
-          Remove-Item -Path "C:\Program Files\dotnet" -Force -Recurse -ErrorAction SilentlyContinue
       - uses: subosito/flutter-action@v2
         with: {channel: stable, cache: true}
       - name: Set up Native Python
@@ -201,18 +195,30 @@ jobs:
       - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend --onefile --noconsole --clean --add-data "artifacts;artifacts" main.py
+          pyinstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts;artifacts" main.py
       - run: |
           flutter config --enable-windows-desktop
           flutter pub get
           flutter pub run flutter_launcher_icons
           flutter build windows --release --build-name=1.2.0
+      - name: Install NSIS
+        shell: powershell
+        run: |
+          choco install nsis -y
+          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Inject SAGE & Build NSIS
         shell: powershell
         run: |
-          $assetsPath = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
+          $bundlePath = "build\windows\x64\bundle"
+          $releaseDir = "build\windows\x64\runner\Release"
+          $assetsPath = "$releaseDir\data\flutter_assets\backend_bundle"
+          
           New-Item -ItemType Directory -Force -Path $assetsPath
-          Copy-Item -Path "ML\dist\sage_backend.exe" -Destination $assetsPath
+          New-Item -ItemType Directory -Force -Path $bundlePath
+          
+          Copy-Item -Path "ML\dist\sage_backend\*" -Destination $assetsPath -Recurse
+          Copy-Item -Path "$releaseDir\*" -Destination $bundlePath -Recurse -Force
+          
           @"
           Name "StockD"
           OutFile "stockd-windows-x64-setup.exe"
@@ -223,12 +229,14 @@ jobs:
             CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe"
           SectionEnd
           "@ | Out-File -Encoding ASCII stockd.nsi
-          & "C:\Program Files (x86)\NSIS\makensis.exe" stockd.nsi
+          
+          makensis.exe stockd.nsi
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: stockd-artifacts
           path: |
             stockd-linux-x64.deb
+            stockd-linux-x64.rpm
             stockd-macos-universal.dmg
             stockd-windows-x64-setup.exe
