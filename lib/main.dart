@@ -14,7 +14,7 @@ import 'screens/lesson/result_screen.dart';
 import 'screens/sage/sage_screen.dart';
 import 'screens/chat/chat_screen.dart';
 import 'screens/overworld/overworld_screen.dart';
-import 'providers/backend_providers.dart';
+import 'providers/sage_provider.dart';
 import 'services/storage_service.dart';
 
 void main() async {
