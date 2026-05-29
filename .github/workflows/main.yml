@@ -174,20 +174,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with: {name: stockd-macos, path: stockd-macos-universal.dmg}
 
-  # ──────────────────────────────────────────────────────────────────────────
-  # Windows x64 — NSIS installer
-  # ──────────────────────────────────────────────────────────────────────────
   build-windows:
     name: Windows x64
     runs-on: windows-latest
     if: inputs.target == 'windows'
     steps:
       - uses: actions/checkout@v4
-      - name: Free up disk space
-        shell: powershell
-        run: |
-          Remove-Item -Path "C:\Program Files (x86)\Android\android-sdk" -Force -Recurse -ErrorAction SilentlyContinue
-          Remove-Item -Path "C:\Program Files\dotnet" -Force -Recurse -ErrorAction SilentlyContinue
+      
+      # Removed the hanging cleanup step entirely
+      
       - uses: subosito/flutter-action@v2
         with: {channel: stable, cache: true}
       - name: Set up Native Python
@@ -201,7 +196,8 @@ jobs:
       - name: Build SAGE Backend (Binary)
         run: |
           cd ML
-          pyinstaller --name sage_backend --onefile --noconsole --clean --add-data "artifacts;artifacts" main.py
+          # We use --clean here to handle space, no need for manual deletion
+          pyinstaller --name sage_backend --onedir --noconsole --clean --add-data "artifacts;artifacts" main.py
       - run: |
           flutter config --enable-windows-desktop
           flutter pub get
@@ -212,7 +208,8 @@ jobs:
         run: |
           $assetsPath = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
           New-Item -ItemType Directory -Force -Path $assetsPath
-          Copy-Item -Path "ML\dist\sage_backend.exe" -Destination $assetsPath
+          # Copying the onedir output folder
+          Copy-Item -Path "ML\dist\sage_backend\*" -Destination $assetsPath -Recurse
           @"
           Name "StockD"
           OutFile "stockd-windows-x64-setup.exe"
@@ -227,8 +224,5 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: stockd-artifacts
-          path: |
-            stockd-linux-x64.deb
-            stockd-macos-universal.dmg
-            stockd-windows-x64-setup.exe
+          name: stockd-windows
+          path: stockd-windows-x64-setup.exe
