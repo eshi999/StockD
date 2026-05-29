@@ -36,21 +36,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev rpm
 
-      - name: Set up Miniconda (Linux)
-        uses: conda-incubator/setup-miniconda@v3
+      # FIXED: Swapped Miniconda out for native GitHub Python environment setup
+      - name: Set up Native Python (Linux)
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          channels: conda-forge,defaults
-          activate-environment: stockd_env
+          cache: 'pip'
 
-      # Standard bash login hooks handle Linux context pathways perfectly
       - name: Install Hardware Accelerated Python Stack (Linux)
-        shell: bash -el {0}
         run: |
-          conda install tensorflow-gpu scikit-learn pandas yfinance pyinstaller cudatoolkit cudnn -c conda-forge -y
+          python -m pip install --upgrade pip
+          python -m pip install tensorflow[and-cuda]==2.15.0 scikit-learn pandas yfinance pyinstaller
 
       - name: Build SAGE Backend (Linux Binary)
-        shell: bash -el {0}
         run: |
           cd ML
           pyinstaller --name sage_backend \
@@ -217,19 +215,17 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Set up Miniconda (macOS)
-        uses: conda-incubator/setup-miniconda@v3
+      # FIXED: Swapped Miniconda out for native GitHub Python environment setup
+      - name: Set up Native Python (macOS)
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          channels: conda-forge,defaults
-          activate-environment: stockd_env
+          cache: 'pip'
 
-      # FIXED: Uses $CONDA_PREFIX pointer tracking to force isolation on macOS nodes
       - name: Install Python Stack & tensorflow-metal (macOS Acceleration Matrix)
-        shell: bash -el {0}
         run: |
-          conda install tensorflow scikit-learn pandas yfinance pyinstaller -y
-          $CONDA_PREFIX/bin/python -m pip install tensorflow-metal
+          python -m pip install --upgrade pip
+          python -m pip install tensorflow==2.15.0 scikit-learn pandas yfinance pyinstaller tensorflow-metal
 
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
@@ -238,7 +234,6 @@ jobs:
         run: flutter pub run flutter_launcher_icons
 
       - name: Build SAGE Backend (macOS Binary)
-        shell: bash -el {0}
         run: |
           cd ML
           pyinstaller --name sage_backend \
@@ -303,23 +298,19 @@ jobs:
         shell: powershell
         run: flutter pub run flutter_launcher_icons
 
-      - name: Set up Miniconda (Windows)
-        uses: conda-incubator/setup-miniconda@v3
+      # FIXED: Swapped Miniconda out for native GitHub Python environment setup (3.10 matches DirectML specs safely)
+      - name: Set up Native Python (Windows)
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-          channels: conda-forge,defaults
-          activate-environment: stockd_env
+          cache: 'pip'
 
-      # FIXED: Uses powershell execution context pointers to enforce isolation on Windows nodes
       - name: Install Windows GPU Accelerated Python Stack
-        shell: powershell {0}
         run: |
-          conda install scikit-learn pandas yfinance pyinstaller pip -y
-          & "$env:CONDA_PREFIX\python.exe" -m pip install tensorflow-cpu==2.15.0
-          & "$env:CONDA_PREFIX\python.exe" -m pip install tensorflow-directml-plugin
+          python -m pip install --upgrade pip
+          python -m pip install scikit-learn pandas yfinance pyinstaller tensorflow-cpu==2.15.0 tensorflow-directml-plugin
 
       - name: Build SAGE Backend (Windows Executable)
-        shell: powershell {0}
         run: |
           cd ML
           pyinstaller --name sage_backend `
