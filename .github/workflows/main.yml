@@ -15,7 +15,7 @@ on:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
-  # STAGE 1: Build SAGE Backend (Once)
+  # STAGE 1: Build SAGE Backend
   # ──────────────────────────────────────────────────────────────────────────
   build-backend:
     name: Build SAGE Backend
@@ -46,26 +46,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with: {channel: stable}
-      - uses: actions/download-artifact@v4
-        with: {name: sage-backend-bundle, path: backend}
-
-      # ADD THIS STEP HERE:
-      - name: Install Linux Build Dependencies
+      - name: Install Linux Deps
         run: |
           sudo apt-get update
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+      - uses: actions/download-artifact@v4
+        with: {name: sage-backend-bundle, path: backend}
       - run: |
           flutter config --enable-linux-desktop
           flutter build linux --release --build-name=1.2.0
           mkdir -p build/linux/x64/bundle/data/flutter_assets/backend_bundle
           cp -r backend/* build/linux/x64/bundle/data/flutter_assets/backend_bundle/
-          
       - name: Build Packages
         run: |
-          # 1. DEB Packaging
-          DEB_ROOT=build/linux/deb/stockd
-          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/stockd
-          tar -C build/linux/x64/bundle -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/stockd/
+          DEB_ROOT=build/linux/deb/StockD
+          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD
+          tar -C build/linux/x64/bundle -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/StockD/
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd
           Version: 1.2.0
@@ -74,17 +70,15 @@ jobs:
           Description: AI Stock App
           Depends: libgtk-3-0
           EOF
-          dpkg-deb --root-owner-group --build $DEB_ROOT stockd-linux-x64.deb
+          dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-x64.deb
           
-          # 2. RPM Packaging
           RPM_ROOT=$HOME/rpmbuild
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS}
-          tar -czf $RPM_ROOT/SOURCES/stockd-1.2.0.tar.gz -C build/linux/x64/bundle .
-          cat > $RPM_ROOT/SPECS/stockd.spec << EOF
-          %global __requires_exclude_from ^/usr/lib/stockd/.*$
-          %global __provides_exclude_from ^/usr/lib/stockd/.*$
-          %global _binaries_in_noarch_packages_terminate_build 0
-          Name: stockd
+          tar -czf $RPM_ROOT/SOURCES/StockD-1.2.0.tar.gz -C build/linux/x64/bundle .
+          cat > $RPM_ROOT/SPECS/StockD.spec << EOF
+          %global __requires_exclude_from ^/usr/lib/StockD/.*$
+          %global __provides_exclude_from ^/usr/lib/StockD/.*$
+          Name: StockD
           Version: 1.2.0
           Release: 1
           Summary: StockD App
@@ -95,18 +89,18 @@ jobs:
           %prep
           %setup -c
           %install
-          mkdir -p %{buildroot}/usr/lib/stockd
-          cp -r ./* %{buildroot}/usr/lib/stockd/
+          mkdir -p %{buildroot}/usr/lib/StockD
+          cp -r ./* %{buildroot}/usr/lib/StockD/
           %files
-          /usr/lib/stockd
+          /usr/lib/StockD
           EOF
-          rpmbuild -bb $RPM_ROOT/SPECS/stockd.spec
+          rpmbuild -bb $RPM_ROOT/SPECS/StockD.spec
       - uses: actions/upload-artifact@v4
         with: 
-          name: stockd-linux-pkgs
+          name: StockD-linux-pkgs
           path: |
-            stockd-linux-x64.deb
-            /home/runner/rpmbuild/RPMS/x86_64/stockd-1.2.0-1.x86_64.rpm
+            StockD-linux-x64.deb
+            /home/runner/rpmbuild/RPMS/x86_64/StockD-1.2.0-1.x86_64.rpm
 
   package-macos-intel:
     needs: build-backend
@@ -121,10 +115,12 @@ jobs:
       - run: |
           flutter config --enable-macos-desktop
           flutter build macos --release
-          cp -r backend/* build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle/
-          hdiutil create -volname "StockD-Intel" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW stockd-macos-intel.dmg
+          DEST_DIR="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+          mkdir -p "$DEST_DIR"
+          cp -r backend/* "$DEST_DIR/"
+          hdiutil create -volname "StockD-Intel" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-macos-intel.dmg
       - uses: actions/upload-artifact@v4
-        with: {name: stockd-macos-intel, path: stockd-macos-intel.dmg}
+        with: {name: StockD-macos-intel, path: StockD-macos-intel.dmg}
 
   package-macos-arm:
     needs: build-backend
@@ -139,10 +135,12 @@ jobs:
       - run: |
           flutter config --enable-macos-desktop
           flutter build macos --release
-          cp -r backend/* build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle/
-          hdiutil create -volname "StockD-Silicon" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW stockd-macos-arm.dmg
+          DEST_DIR="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+          mkdir -p "$DEST_DIR"
+          cp -r backend/* "$DEST_DIR/"
+          hdiutil create -volname "StockD-Silicon" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-macos-arm.dmg
       - uses: actions/upload-artifact@v4
-        with: {name: stockd-macos-arm, path: stockd-macos-arm.dmg}
+        with: {name: StockD-macos-arm, path: StockD-macos-arm.dmg}
 
   package-windows:
     needs: build-backend
@@ -169,14 +167,14 @@ jobs:
         run: |
           @"
           Name "StockD"
-          OutFile "stockd-windows-x64-setup.exe"
+          OutFile "StockD-windows-x64-setup.exe"
           InstallDir "$PROGRAMFILES64\StockD"
           Section
             SetOutPath "$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
-            CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\stockd.exe"
+            CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\StockD.exe"
           SectionEnd
-          "@ | Out-File -Encoding ASCII stockd.nsi
-          makensis.exe stockd.nsi
+          "@ | Out-File -Encoding ASCII StockD.nsi
+          makensis.exe StockD.nsi
       - uses: actions/upload-artifact@v4
-        with: {name: stockd-windows-x64, path: stockd-windows-x64-setup.exe}
+        with: {name: StockD-windows-x64, path: StockD-windows-x64-setup.exe}
