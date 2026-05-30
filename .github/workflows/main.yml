@@ -75,6 +75,8 @@ jobs:
       # ==========================================
       - name: Compile PyInstaller (Unix)
         if: runner.os != 'Windows'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: |
           python -m pip install pyinstaller ${{ matrix.pkgs }} scikit-learn pandas yfinance fastapi uvicorn
           cd ML
@@ -125,6 +127,11 @@ jobs:
           Name "StockD"
           OutFile "StockD-${{ matrix.id }}-setup.exe"
           InstallDir "`$PROGRAMFILES64\StockD"
+          
+          # Inject Custom Installer Icons using Flutter's output
+          Icon "windows\runner\resources\app_icon.ico"
+          UninstallIcon "windows\runner\resources\app_icon.ico"
+
           Section
             SetOutPath "`$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
@@ -186,13 +193,17 @@ jobs:
         run: |
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           DEB_ROOT=build/linux/deb/StockD-1.2.0
-          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications
+          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/pixmaps
           tar -C $BUNDLE -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/StockD-1.2.0/
+          
+          # Inject Custom Linux Desktop Launcher Icon
+          cp assets/images/StockD.png $DEB_ROOT/usr/share/pixmaps/stockd.png
           
           cat > $DEB_ROOT/usr/share/applications/stockd.desktop << EOF
           [Desktop Entry]
           Name=StockD
           Exec=/usr/bin/stockd
+          Icon=stockd
           Type=Application
           Categories=Finance;Education;
           EOF
@@ -223,11 +234,16 @@ jobs:
           mkdir -p $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/lib/StockD-1.2.0
           mkdir -p $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/bin
           mkdir -p $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/share/applications
+          mkdir -p $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/share/pixmaps
           
           tar -C $BUNDLE -cf - . | tar -xf - -C $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/lib/StockD-1.2.0/
+          
+          # Inject Custom Linux Desktop Launcher Icon
+          cp assets/images/StockD.png $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/share/pixmaps/stockd.png
+          
           chmod 755 $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/lib/StockD-1.2.0/stockd
           ln -s /usr/lib/StockD-1.2.0/stockd $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/bin/stockd
-          printf '[Desktop Entry]\nName=StockD\nExec=/usr/bin/stockd\nType=Application\nCategories=Finance;\n' > $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/share/applications/stockd.desktop
+          printf '[Desktop Entry]\nName=StockD\nExec=/usr/bin/stockd\nIcon=stockd\nType=Application\nCategories=Finance;\n' > $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/share/applications/stockd.desktop
           
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
           Name: StockD
@@ -244,6 +260,7 @@ jobs:
           /usr/lib/StockD-1.2.0
           /usr/bin/stockd
           /usr/share/applications/stockd.desktop
+          /usr/share/pixmaps/stockd.png
           EOF
           
           rpmbuild -bb --define "__strip /bin/true" --define "_topdir $RPM_ROOT" $RPM_ROOT/SPECS/StockD.spec
