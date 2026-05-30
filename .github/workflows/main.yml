@@ -5,43 +5,89 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  
+  # ==========================================
+  # INTERACTIVE MANUAL TRIGGER MENU
+  # ==========================================
   workflow_dispatch: 
+    inputs:
+      build_windows:
+        description: "Build Windows (Universal)"
+        type: boolean
+        default: true
+      build_macos:
+        description: "Build macOS (Intel & ARM)"
+        type: boolean
+        default: true
+      build_linux:
+        description: "Build Linux (Nvidia, Intel, AMD, ARM)"
+        type: boolean
+        default: true
 
 # ==========================================
-# EXPLICIT BOT PERMISSIONS (Fixes the 403 Error)
+# SILENCE NODE.JS 20 DEPRECATION WARNINGS
 # ==========================================
-permissions:
-  contents: write
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+permissions:
+  contents: write
+
 jobs:
+  # ==========================================
+  # THE DYNAMIC MATRIX GENERATOR (The Kill-Switch)
+  # ==========================================
+  setup-matrix:
+    name: Configure OS Targets
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Generate Matrix JSON
+        id: set-matrix
+        shell: python
+        run: |
+          import json
+          import os
+
+          event = "${{ github.event_name }}"
+          win = "${{ inputs.build_windows }}" == "true" or event != "workflow_dispatch"
+          mac = "${{ inputs.build_macos }}" == "true" or event != "workflow_dispatch"
+          lin = "${{ inputs.build_linux }}" == "true" or event != "workflow_dispatch"
+
+          matrix = []
+          
+          if win:
+              matrix.append({"id": "windows-x64", "os": "windows-latest", "platform": "windows", "arch": "x64", "pkgs": "tensorflow==2.10.1", "python_ver": "3.10"})
+          
+          if mac:
+              matrix.append({"id": "mac-arm", "os": "macos-15", "platform": "macos", "arch": "arm64", "pkgs": "tensorflow tensorflow-metal", "python_ver": "3.12", "mac_pkg": "3.12.3"})
+              matrix.append({"id": "mac-intel", "os": "macos-15-intel", "platform": "macos", "arch": "x64", "pkgs": "tensorflow", "python_ver": "3.12", "mac_pkg": "3.12.3"})
+          
+          if lin:
+              matrix.append({"id": "linux-x64-nvidia", "os": "ubuntu-latest", "platform": "linux", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "pkgs": "tensorflow[and-cuda]", "python_ver": "3.12"})
+              matrix.append({"id": "linux-x64-amd", "os": "ubuntu-latest", "platform": "linux", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "pkgs": "tensorflow", "python_ver": "3.12"})
+              matrix.append({"id": "linux-x64-intel", "os": "ubuntu-latest", "platform": "linux", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "pkgs": "tensorflow intel-extension-for-tensorflow", "python_ver": "3.12"})
+              matrix.append({"id": "linux-arm64", "os": "ubuntu-24.04-arm", "platform": "linux", "arch": "arm64", "deb_arch": "arm64", "rpm_arch": "aarch64", "pkgs": "tensorflow", "python_ver": "3.12"})
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"matrix={json.dumps(matrix)}\n")
+
+  # ==========================================
+  # THE HEAVY BUILD FACTORY
+  # ==========================================
   build:
+    needs: setup-matrix
+    if: ${{ needs.setup-matrix.outputs.matrix != '[]' }}
     name: Build (${{ matrix.id }})
     runs-on: ${{ matrix.os }}
     
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # --- WINDOWS TARGETS ---
-          - { id: windows-x64, os: windows-latest, platform: windows, arch: x64, pkgs: "tensorflow==2.10.1", python_ver: "3.10" }
-
-          # --- MACOS TARGETS ---
-          - { id: mac-arm, os: macos-26, platform: macos, arch: arm64, pkgs: "tensorflow tensorflow-metal", python_ver: "3.12", mac_pkg: "3.12.3" }
-          - { id: mac-intel, os: macos-26-intel, platform: macos, arch: x64, pkgs: "tensorflow", python_ver: "3.12", mac_pkg: "3.12.3" }
-
-          # --- LINUX TARGETS ---
-          - { id: linux-x64-nvidia, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64, pkgs: "tensorflow[and-cuda]", python_ver: "3.12" }
-          - { id: linux-x64-amd, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64, pkgs: "tensorflow", python_ver: "3.12" }
-          - { id: linux-x64-intel, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64, pkgs: "tensorflow intel-extension-for-tensorflow", python_ver: "3.12" }
-          - { id: linux-arm64, os: ubuntu-24.04-arm, platform: linux, arch: arm64, deb_arch: arm64, rpm_arch: aarch64, pkgs: "tensorflow", python_ver: "3.12" }
+        include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
     steps:
-      # ==========================================
-      # GENERAL SETUP STAGES
-      # ==========================================
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -57,7 +103,6 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      # --- SPLIT PYTHON SETUP ---
       - name: Setup Python (Linux & Windows)
         if: runner.os != 'macOS'
         uses: actions/setup-python@v5
@@ -68,7 +113,6 @@ jobs:
       - name: Setup Python (macOS Foundation Build)
         if: runner.os == 'macOS'
         run: |
-          # Download the official universal macOS installer matching the matrix version
           curl -O https://www.python.org/ftp/python/${{ matrix.mac_pkg }}/python-${{ matrix.mac_pkg }}-macos11.pkg
           sudo installer -pkg python-${{ matrix.mac_pkg }}-macos11.pkg -target /
 
@@ -86,21 +130,20 @@ jobs:
           $HOME/flutter/bin/flutter precache
 
       # ==========================================
-      # SAGE BACKEND COMPILATION
+      # SAGE BACKEND COMPILATION (Protobuf Fix Included)
       # ==========================================
       - name: Compile PyInstaller (Unix)
         if: runner.os != 'Windows'
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: |
-          # FORCING THE ABSOLUTE PATH ON MACOS TO BYPASS HOMEBREW
           if [ "$RUNNER_OS" == "macOS" ]; then
             PY_CMD="/Library/Frameworks/Python.framework/Versions/${{ matrix.python_ver }}/bin/python3"
           else
             PY_CMD="python"
           fi
           
-          $PY_CMD -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" scikit-learn pandas yfinance fastapi uvicorn
+          $PY_CMD -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           
           cd ML
           $PY_CMD -m PyInstaller --name sage_backend --onedir --noconsole --clean --strip \
@@ -116,7 +159,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          python -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" scikit-learn pandas yfinance fastapi uvicorn
+          python -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           cd ML
           python -m PyInstaller --name sage_backend --onedir --noconsole --clean --strip `
             --add-data "artifacts;artifacts" `
@@ -184,7 +227,6 @@ jobs:
           
           rm -f StockD-${{ matrix.id }}.dmg
           
-          # Force macOS to flush all disk writes and release folder locks
           sync
           sleep 10
           
@@ -294,7 +336,7 @@ jobs:
           rm -rf $RPM_ROOT
 
       # ==========================================
-      # SPLIT MASSIVE FILES (Bypass 2GB Limit)
+      # SPLIT MASSIVE FILES
       # ==========================================
       - name: Split Large Binaries
         shell: bash
@@ -306,7 +348,7 @@ jobs:
           done
 
       # ==========================================
-      # DIRECT RELEASE UPLOAD (Bypass Storage Quota)
+      # DIRECT RELEASE UPLOAD
       # ==========================================
       - name: Upload Directly to GitHub Releases
         uses: softprops/action-gh-release@v2
@@ -314,6 +356,8 @@ jobs:
           tag_name: "latest"
           name: "StockD-1.2.0"
           make_latest: true
+          fail_on_unmatched_files: false
+          overwrite_files: true
           files: |
             *.exe
             *.dmg
