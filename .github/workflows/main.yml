@@ -30,48 +30,67 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# ==========================================
-# EXPLICIT BOT PERMISSIONS (Fixes the 403 Error)
-# ==========================================
 permissions:
   contents: write
 
 jobs:
+  # ==========================================
+  # THE DYNAMIC MATRIX GENERATOR (The Kill-Switch)
+  # ==========================================
+  setup-matrix:
+    name: Configure OS Targets
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Generate Matrix JSON
+        id: set-matrix
+        shell: python
+        run: |
+          import json
+          import os
+
+          event = "${{ github.event_name }}"
+          # Checkboxes evaluate strictly during a manual trigger
+          win = "${{ inputs.build_windows }}" == "true" or event != "workflow_dispatch"
+          mac = "${{ inputs.build_macos }}" == "true" or event != "workflow_dispatch"
+          lin = "${{ inputs.build_linux }}" == "true" or event != "workflow_dispatch"
+
+          matrix = []
+          
+          if win:
+              matrix.append({"id": "windows-x64", "os": "windows-latest", "platform": "windows", "arch": "x64", "pkgs": "tensorflow==2.10.1", "python_ver": "3.10"})
+          
+          if mac:
+              matrix.append({"id": "mac-arm", "os": "macos-15", "platform": "macos", "arch": "arm64", "pkgs": "tensorflow tensorflow-metal", "python_ver": "3.12", "mac_pkg": "3.12.3"})
+              matrix.append({"id": "mac-intel", "os": "macos-15-intel", "platform": "macos", "arch": "x64", "pkgs": "tensorflow", "python_ver": "3.12", "mac_pkg": "3.12.3"})
+          
+          if lin:
+              matrix.append({"id": "linux-x64-nvidia", "os": "ubuntu-latest", "platform": "linux", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "pkgs": "tensorflow[and-cuda]", "python_ver": "3.12"})
+              matrix.append({"id": "linux-x64-amd", "os": "ubuntu-latest", "platform": "linux", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "pkgs": "tensorflow", "python_ver": "3.12"})
+              matrix.append({"id": "linux-x64-intel", "os": "ubuntu-latest", "platform": "linux", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "pkgs": "tensorflow intel-extension-for-tensorflow", "python_ver": "3.12"})
+              matrix.append({"id": "linux-arm64", "os": "ubuntu-24.04-arm", "platform": "linux", "arch": "arm64", "deb_arch": "arm64", "rpm_arch": "aarch64", "pkgs": "tensorflow", "python_ver": "3.12"})
+
+          # Securely write the JSON array to GitHub's internal output pipeline
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"matrix={json.dumps(matrix)}\n")
+
+  # ==========================================
+  # THE HEAVY BUILD FACTORY
+  # ==========================================
   build:
+    needs: setup-matrix
+    # Prevents the job from crashing if someone unchecks all three boxes
+    if: ${{ needs.setup-matrix.outputs.matrix != '[]' }}
     name: Build (${{ matrix.id }})
     runs-on: ${{ matrix.os }}
-    
-    # ==========================================
-    # THE BILLING KILL-SWITCH
-    # Runs automatically on push/PR. If manually triggered, strictly follows checkboxes.
-    # ==========================================
-    if: >-
-      github.event_name != 'workflow_dispatch' ||
-      (inputs.build_windows == true && matrix.platform == 'windows') ||
-      (inputs.build_macos == true && matrix.platform == 'macos') ||
-      (inputs.build_linux == true && matrix.platform == 'linux')
     
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # --- WINDOWS TARGETS ---
-          - { id: windows-x64, os: windows-latest, platform: windows, arch: x64, pkgs: "tensorflow==2.10.1", python_ver: "3.10" }
-
-          # --- MACOS TARGETS ---
-          - { id: mac-arm, os: macos-15, platform: macos, arch: arm64, pkgs: "tensorflow tensorflow-metal", python_ver: "3.12", mac_pkg: "3.12.3" }
-          - { id: mac-intel, os: macos-15-intel, platform: macos, arch: x64, pkgs: "tensorflow", python_ver: "3.12", mac_pkg: "3.12.3" }
-
-          # --- LINUX TARGETS ---
-          - { id: linux-x64-nvidia, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64, pkgs: "tensorflow[and-cuda]", python_ver: "3.12" }
-          - { id: linux-x64-amd, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64, pkgs: "tensorflow", python_ver: "3.12" }
-          - { id: linux-x64-intel, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64, pkgs: "tensorflow intel-extension-for-tensorflow", python_ver: "3.12" }
-          - { id: linux-arm64, os: ubuntu-24.04-arm, platform: linux, arch: arm64, deb_arch: arm64, rpm_arch: aarch64, pkgs: "tensorflow", python_ver: "3.12" }
+        include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
     steps:
-      # ==========================================
-      # GENERAL SETUP STAGES
-      # ==========================================
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -87,7 +106,6 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      # --- SPLIT PYTHON SETUP ---
       - name: Setup Python (Linux & Windows)
         if: runner.os != 'macOS'
         uses: actions/setup-python@v5
@@ -333,7 +351,7 @@ jobs:
           done
 
       # ==========================================
-      # DIRECT RELEASE UPLOAD (Bypass Storage Quota)
+      # DIRECT RELEASE UPLOAD (Bypass API Crashes)
       # ==========================================
       - name: Upload Directly to GitHub Releases
         uses: softprops/action-gh-release@v2
