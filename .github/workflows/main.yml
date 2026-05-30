@@ -2,125 +2,94 @@ name: Build StockD
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
+    inputs:
+      target:
+        description: "Target platform"
+        required: true
+        default: linux
+        type: choice
+        options:
+          - linux
+          - windows
+          - macos
 
 jobs:
-  build:
-    name: Build (${{ matrix.name }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux-nvidia
-            os: ubuntu-latest
-            tf_packages: tensorflow
-            flutter_platform: linux
-          - name: linux-amd
-            os: ubuntu-latest
-            tf_packages: tensorflow
-            flutter_platform: linux
-          - name: linux-intel
-            os: ubuntu-latest
-            tf_packages: tensorflow intel-extension-for-tensorflow
-            flutter_platform: linux
-          - name: mac-intel
-            os: macos-15-intel
-            tf_packages: tensorflow
-            flutter_platform: macos
-          - name: mac-arm
-            os: macos-15
-            tf_packages: tensorflow tensorflow-metal
-            flutter_platform: macos
-          - name: windows-nvidia
-            os: windows-latest
-            tf_packages: tensorflow
-            flutter_platform: windows
-          - name: windows-amd
-            os: windows-latest
-            tf_packages: tensorflow
-            flutter_platform: windows
-          - name: windows-intel
-            os: windows-latest
-            tf_packages: tensorflow intel-extension-for-tensorflow
-            flutter_platform: windows
-
-    runs-on: ${{ matrix.os }}
+  build-backend:
+    name: Build SAGE Backend
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: "3.12", cache: pip}
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+      - name: Install & Compile
+        run: |
+          python -m pip install pyinstaller tensorflow scikit-learn pandas yfinance
+          cd ML
+          python -m PyInstaller --name sage_backend --onedir --noconsole --clean --strip --add-data "artifacts:artifacts" main.py
+      - name: Upload Backend
+        uses: actions/upload-artifact@v4
+        with:
+          name: sage-backend-bundle
+          path: ML/dist/sage_backend/
+
+  package-linux:
+    needs: build-backend
+    runs-on: ubuntu-latest
+    if: inputs.target == 'linux'
+    steps:
+      - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
-        with: {channel: stable}
-
-      # --- Build Backend: Unix -------------------------------------------
-      - name: Build Backend (Unix)
-        if: matrix.flutter_platform != 'windows'
-        run: |
-          python -m pip install pyinstaller ${{ matrix.tf_packages }} scikit-learn pandas yfinance
-          cd ML
-          python -m PyInstaller --name sage_backend --onedir --noconsole --clean --strip \
-            --add-data "artifacts:artifacts" \
-            --exclude-module tensorboard \
-            --exclude-module tensorflow_estimator \
-            --exclude-module tensorflow.python.debug \
-            --exclude-module tensorflow.lite.experimental \
-            main.py
-          du -sh dist/sage_backend/
-
-      # --- Build Backend: Windows ----------------------------------------
-      - name: Build Backend (Windows)
-        if: matrix.flutter_platform == 'windows'
-        shell: powershell
-        run: |
-          python -m pip install pyinstaller ${{ matrix.tf_packages }} scikit-learn pandas yfinance
-          cd ML
-          python -m PyInstaller --name sage_backend --onedir --noconsole --clean --strip `
-            --add-data "artifacts;artifacts" `
-            --exclude-module tensorboard `
-            --exclude-module tensorflow_estimator `
-            --exclude-module tensorflow.python.debug `
-            --exclude-module tensorflow.lite.experimental `
-            main.py
-
-      # --- Package: Linux ------------------------------------------------
+        with:
+          channel: stable
       - name: Install Linux Deps
-        if: matrix.flutter_platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm
-
-      - name: Package Linux
-        if: matrix.flutter_platform == 'linux'
+      - uses: actions/download-artifact@v4
+        with:
+          name: sage-backend-bundle
+          path: backend
+      - name: Build Linux
         run: |
           flutter config --enable-linux-desktop
           flutter build linux --release --build-name=1.2.0
           BUNDLE=build/linux/x64/release/bundle
           mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
-          cp -r ML/dist/sage_backend/* $BUNDLE/data/flutter_assets/backend_bundle/
-
-          DEB_ROOT=build/linux/deb/StockD
-          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD $DEB_ROOT/usr/share/applications
-          tar -C $BUNDLE -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/StockD/
-
-          printf 'Name=StockD\nExec=/usr/bin/stockd\nType=Application\nCategories=Finance;Education;\n' \
-            | sed '1s/^/[Desktop Entry]\n/' \
-            > $DEB_ROOT/usr/share/applications/stockd.desktop
-
-          printf 'Package: stockd\nVersion: 1.2.0\nArchitecture: amd64\nMaintainer: Gautam Mahajan\nDescription: AI Stock App\nDepends: libgtk-3-0\n' \
-            > $DEB_ROOT/DEBIAN/control
-
-          ln -s /usr/lib/StockD/stockd $DEB_ROOT/usr/bin/stockd
-          chmod 755 \
-            $DEB_ROOT/usr/lib/StockD/stockd \
-            $DEB_ROOT/usr/lib/StockD/data/flutter_assets/backend_bundle/sage_backend
-
-          dpkg-deb --root-owner-group -Znone --build $DEB_ROOT StockD-${{ matrix.name }}.deb
-
+          cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
+          
+          # DEB Packaging
+          DEB_ROOT=build/linux/deb/StockD-1.2.0
+          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications
+          tar -C $BUNDLE -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/StockD-1.2.0/
+          
+          cat > $DEB_ROOT/usr/share/applications/stockd.desktop << EOF
+          [Desktop Entry]
+          Name=StockD
+          Exec=/usr/bin/stockd
+          Type=Application
+          Categories=Finance;Education;
+          EOF
+          
+          ln -s /usr/lib/StockD-1.2.0/stockd $DEB_ROOT/usr/bin/stockd
+          chmod 755 $DEB_ROOT/usr/lib/StockD-1.2.0/stockd $DEB_ROOT/usr/lib/StockD-1.2.0/data/flutter_assets/backend_bundle/sage_backend
+          
+          cat > $DEB_ROOT/DEBIAN/control << EOF
+          Package: stockd
+          Version: 1.2.0
+          Architecture: amd64
+          Maintainer: Gautam Mahajan
+          Description: AI Stock App
+          Depends: libgtk-3-0
+          EOF
+          dpkg-deb --root-owner-group -Znone --build $DEB_ROOT StockD-linux-x64.deb
+          
+          # RPM Packaging
           RPM_ROOT=$HOME/rpmbuild
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS}
           tar -czf $RPM_ROOT/SOURCES/StockD-1.2.0.tar.gz -C $BUNDLE .
-
+          
           python3 - << 'PYEOF'
           import os
           spec = """Name: StockD
@@ -130,70 +99,80 @@ jobs:
           BuildArch: x86_64
           License: Proprietary
           Source0: StockD-1.2.0.tar.gz
-
           %description
           AI Coach.
-
           %prep
           %setup -c -n StockD-1.2.0
-
           %install
-          mkdir -p %{buildroot}/usr/lib/StockD %{buildroot}/usr/bin %{buildroot}/usr/share/applications
-          cp -r StockD-1.2.0/* %{buildroot}/usr/lib/StockD/
-          chmod 755 %{buildroot}/usr/lib/StockD/stockd %{buildroot}/usr/lib/StockD/data/flutter_assets/backend_bundle/sage_backend
-          ln -s /usr/lib/StockD/stockd %{buildroot}/usr/bin/stockd
+          mkdir -p %{buildroot}/usr/lib/StockD-1.2.0 %{buildroot}/usr/bin %{buildroot}/usr/share/applications
+          cp -r ./* %{buildroot}/usr/lib/StockD-1.2.0/
+          chmod 755 %{buildroot}/usr/lib/StockD-1.2.0/stockd %{buildroot}/usr/lib/StockD-1.2.0/data/flutter_assets/backend_bundle/sage_backend
+          ln -s /usr/lib/StockD-1.2.0/stockd %{buildroot}/usr/bin/stockd
           printf '[Desktop Entry]\\nName=StockD\\nExec=/usr/bin/stockd\\nType=Application\\nCategories=Finance;\\n' > %{buildroot}/usr/share/applications/stockd.desktop
-
           %files
-          /usr/lib/StockD
+          /usr/lib/StockD-1.2.0
           /usr/bin/stockd
           /usr/share/applications/stockd.desktop
           """
-          rpm_root = os.path.expanduser("~/rpmbuild")
-          with open(f"{rpm_root}/SPECS/StockD.spec", "w") as f:
+          with open(os.path.expanduser("~/rpmbuild/SPECS/StockD.spec"), "w") as f:
               f.write(spec)
           PYEOF
-
           rpmbuild -bb --define "__strip /bin/true" $RPM_ROOT/SPECS/StockD.spec
-          mv $RPM_ROOT/RPMS/x86_64/StockD-1.2.0-1.x86_64.rpm StockD-${{ matrix.name }}-1.2.0.rpm
-
-      - name: Upload Linux Packages
-        if: matrix.flutter_platform == 'linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: StockD-${{ matrix.name }}-pkgs
+          mv $RPM_ROOT/RPMS/x86_64/StockD-1.2.0-1.x86_64.rpm StockD-linux-x64.rpm
+      - uses: actions/upload-artifact@v4
+        with: 
+          name: StockD-linux-pkgs
           path: |
-            StockD-${{ matrix.name }}.deb
-            StockD-${{ matrix.name }}-1.2.0.rpm
+            StockD-linux-x64.deb
+            StockD-linux-x64.rpm
 
-      # --- Package: macOS ------------------------------------------------
-      - name: Package macOS
-        if: matrix.flutter_platform == 'macos'
-        run: |
+  package-macos:
+    needs: build-backend
+    strategy:
+      matrix:
+        include:
+          - {runner: macos-15-intel, name: intel}
+          - {runner: macos-15, name: arm}
+    runs-on: ${{ matrix.runner }}
+    if: inputs.target == 'macos'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - uses: actions/download-artifact@v4
+        with:
+          name: sage-backend-bundle
+          path: backend
+      - run: |
           flutter config --enable-macos-desktop
           flutter build macos --release
           find build/macos/Build/Products/Release/StockD.app -name "*.dSYM" -exec rm -rf {} +
           DEST_DIR="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$DEST_DIR"
-          cp -r ML/dist/sage_backend/* "$DEST_DIR/"
-          rm -f StockD-${{ matrix.name }}.dmg
+          cp -r backend/* "$DEST_DIR/"
+          rm -f StockD-macos-${{ matrix.name }}.dmg
           sleep 2
-          hdiutil create \
-            -volname "StockD-${{ matrix.name }}" \
-            -srcfolder build/macos/Build/Products/Release/StockD.app \
-            -ov -format UDRW \
-            StockD-${{ matrix.name }}.dmg
-
-      - name: Upload macOS Package
-        if: matrix.flutter_platform == 'macos'
-        uses: actions/upload-artifact@v4
+          hdiutil create -volname "StockD-${{ matrix.name }}" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-macos-${{ matrix.name }}.dmg
+      - uses: actions/upload-artifact@v4
         with:
-          name: StockD-${{ matrix.name }}
-          path: StockD-${{ matrix.name }}.dmg
+          name: StockD-macos-${{ matrix.name }}
+          path: StockD-macos-${{ matrix.name }}.dmg
 
-      # --- Package: Windows ----------------------------------------------
-      - name: Package Windows
-        if: matrix.flutter_platform == 'windows'
+  package-windows:
+    needs: build-backend
+    runs-on: windows-latest
+    if: inputs.target == 'windows'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - uses: actions/download-artifact@v4
+        with:
+          name: sage-backend-bundle
+          path: backend
+      - name: Build and Copy
         shell: powershell
         run: |
           flutter config --enable-windows-desktop
@@ -201,33 +180,26 @@ jobs:
           $bundlePath = "build\windows\x64\runner\Release"
           $assetsPath = "$bundlePath\data\flutter_assets\backend_bundle"
           New-Item -ItemType Directory -Force -Path $assetsPath
-          Copy-Item -Path "ML\dist\sage_backend\*" -Destination $assetsPath -Recurse
-
+          Copy-Item -Path "backend\*" -Destination $assetsPath -Recurse
       - name: Install NSIS
-        if: matrix.flutter_platform == 'windows'
         run: |
           choco install nsis -y --no-progress
           echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Build Windows Installer
-        if: matrix.flutter_platform == 'windows'
+      - name: Build Installer
         shell: powershell
         run: |
           @"
           Name "StockD"
-          OutFile "StockD-${{ matrix.name }}-setup.exe"
-          InstallDir "`$PROGRAMFILES64\StockD"
+          OutFile "StockD-windows-x64-setup.exe"
+          InstallDir "$PROGRAMFILES64\StockD"
           Section
-            SetOutPath "`$INSTDIR"
+            SetOutPath "$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
-            CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe"
+            CreateShortcut "$DESKTOP\StockD.lnk" "$INSTDIR\StockD.exe"
           SectionEnd
           "@ | Out-File -Encoding ASCII StockD.nsi
           makensis.exe StockD.nsi
-
-      - name: Upload Windows Installer
-        if: matrix.flutter_platform == 'windows'
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: StockD-${{ matrix.name }}
-          path: StockD-${{ matrix.name }}-setup.exe
+          name: StockD-windows-x64
+          path: StockD-windows-x64-setup.exe
