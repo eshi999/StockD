@@ -12,45 +12,34 @@ jobs:
       fail-fast: false
       matrix:
         include:
-
-          # Linux
           - name: linux-nvidia
             os: ubuntu-latest
             tf_packages: tensorflow
             flutter_platform: linux
-
           - name: linux-amd
             os: ubuntu-latest
             tf_packages: tensorflow
             flutter_platform: linux
-
           - name: linux-intel
             os: ubuntu-latest
             tf_packages: tensorflow intel-extension-for-tensorflow
             flutter_platform: linux
-
-          # macOS (Metal handles Intel iGPU + AMD eGPU via Thunderbolt + Apple Silicon)
           - name: mac-intel
             os: macos-15-intel
             tf_packages: tensorflow
             flutter_platform: macos
-
           - name: mac-arm
             os: macos-15
             tf_packages: tensorflow tensorflow-metal
             flutter_platform: macos
-
-          # Windows (ROCm is Linux-only; AMD falls back to CPU-optimized TF)
           - name: windows-nvidia
             os: windows-latest
             tf_packages: tensorflow
             flutter_platform: windows
-
           - name: windows-amd
             os: windows-latest
             tf_packages: tensorflow
             flutter_platform: windows
-
           - name: windows-intel
             os: windows-latest
             tf_packages: tensorflow intel-extension-for-tensorflow
@@ -60,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: "3.12", cache: 'pip'}
+        with: {python-version: "3.12", cache: pip}
       - uses: subosito/flutter-action@v2
         with: {channel: stable}
 
@@ -110,70 +99,60 @@ jobs:
           mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
           cp -r ML/dist/sage_backend/* $BUNDLE/data/flutter_assets/backend_bundle/
 
-          # DEB
           DEB_ROOT=build/linux/deb/StockD
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD $DEB_ROOT/usr/share/applications
           tar -C $BUNDLE -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/StockD/
 
-          cat > $DEB_ROOT/usr/share/applications/stockd.desktop << 'EOF'
- [Desktop Entry]
-Name=StockD
-Exec=/usr/bin/stockd
-Type=Application
-Categories=Finance;Education;
-EOF
+          printf 'Name=StockD\nExec=/usr/bin/stockd\nType=Application\nCategories=Finance;Education;\n' \
+            | sed '1s/^/[Desktop Entry]\n/' \
+            > $DEB_ROOT/usr/share/applications/stockd.desktop
+
+          printf 'Package: stockd\nVersion: 1.2.0\nArchitecture: amd64\nMaintainer: Gautam Mahajan\nDescription: AI Stock App\nDepends: libgtk-3-0\n' \
+            > $DEB_ROOT/DEBIAN/control
 
           ln -s /usr/lib/StockD/stockd $DEB_ROOT/usr/bin/stockd
           chmod 755 \
             $DEB_ROOT/usr/lib/StockD/stockd \
             $DEB_ROOT/usr/lib/StockD/data/flutter_assets/backend_bundle/sage_backend
 
-          cat > $DEB_ROOT/DEBIAN/control << 'EOF'
-Package: stockd
-Version: 1.2.0
-Architecture: amd64
-Maintainer: Gautam Mahajan
-Description: AI Stock App
-Depends: libgtk-3-0
-EOF
-
           dpkg-deb --root-owner-group -Znone --build $DEB_ROOT StockD-${{ matrix.name }}.deb
 
-          # RPM
           RPM_ROOT=$HOME/rpmbuild
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS}
           tar -czf $RPM_ROOT/SOURCES/StockD-1.2.0.tar.gz -C $BUNDLE .
 
-          cat > $RPM_ROOT/SPECS/StockD.spec << 'EOF'
-           Name:    StockD
-           Version: 1.2.0
-           Release: 1
-           Summary: StockD App
-           BuildArch: x86_64
-           License: Proprietary
-           Source0: StockD-1.2.0.tar.gz
+          python3 - << 'PYEOF'
+          import os
+          spec = """Name: StockD
+          Version: 1.2.0
+          Release: 1
+          Summary: StockD App
+          BuildArch: x86_64
+          License: Proprietary
+          Source0: StockD-1.2.0.tar.gz
 
-           %description
-           AI Coach.
+          %description
+          AI Coach.
 
-           %prep
-           %setup -c -n StockD-1.2.0
+          %prep
+          %setup -c -n StockD-1.2.0
 
-           %install
-           mkdir -p %{buildroot}/usr/lib/StockD %{buildroot}/usr/bin %{buildroot}/usr/share/applications
-           cp -r StockD-1.2.0/* %{buildroot}/usr/lib/StockD/
-           chmod 755 \
-             %{buildroot}/usr/lib/StockD/stockd \
-             %{buildroot}/usr/lib/StockD/data/flutter_assets/backend_bundle/sage_backend
-           ln -s /usr/lib/StockD/stockd %{buildroot}/usr/bin/stockd
-           echo -e " [Desktop Entry]\n Name=StockD\n Exec=/usr/bin/stockd\n Type=Application\n Categories=Finance;" \
-             > %{buildroot}/usr/share/applications/stockd.desktop
+          %install
+          mkdir -p %{buildroot}/usr/lib/StockD %{buildroot}/usr/bin %{buildroot}/usr/share/applications
+          cp -r StockD-1.2.0/* %{buildroot}/usr/lib/StockD/
+          chmod 755 %{buildroot}/usr/lib/StockD/stockd %{buildroot}/usr/lib/StockD/data/flutter_assets/backend_bundle/sage_backend
+          ln -s /usr/lib/StockD/stockd %{buildroot}/usr/bin/stockd
+          printf '[Desktop Entry]\\nName=StockD\\nExec=/usr/bin/stockd\\nType=Application\\nCategories=Finance;\\n' > %{buildroot}/usr/share/applications/stockd.desktop
 
-           %files
-           /usr/lib/StockD
-           /usr/bin/stockd
-           /usr/share/applications/stockd.desktop
-          EOF
+          %files
+          /usr/lib/StockD
+          /usr/bin/stockd
+          /usr/share/applications/stockd.desktop
+          """
+          rpm_root = os.path.expanduser("~/rpmbuild")
+          with open(f"{rpm_root}/SPECS/StockD.spec", "w") as f:
+              f.write(spec)
+          PYEOF
 
           rpmbuild -bb --define "__strip /bin/true" $RPM_ROOT/SPECS/StockD.spec
           mv $RPM_ROOT/RPMS/x86_64/StockD-1.2.0-1.x86_64.rpm StockD-${{ matrix.name }}-1.2.0.rpm
