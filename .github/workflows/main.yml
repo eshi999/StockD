@@ -7,6 +7,12 @@ on:
     branches: [ main, master ]
   workflow_dispatch: 
 
+# ==========================================
+# EXPLICIT BOT PERMISSIONS (Fixes the 403 Error)
+# ==========================================
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build (${{ matrix.id }})
@@ -277,7 +283,7 @@ jobs:
           find . -maxdepth 1 -type f -size +1900M | while read file; do
             echo "Splitting large file: $file"
             split -b 1900M "$file" "${file}.part_"
-            rm "$file" # Delete the original massive file to save space
+            rm "$file" # Instantly deletes the original so it isn't uploaded!
           done
 
       # ==========================================
