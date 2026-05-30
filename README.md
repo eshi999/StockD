@@ -1,433 +1,322 @@
 # StockD
 
-<div align="center">
+**Gamified stock market literacy — powered by a local AI coach.**
 
-### Gamified Stock Market Literacy — Powered by a Local AI Coach
+StockD is a desktop-first educational platform that teaches stock market fundamentals through interactive progression, historical market data, and an integrated local AI mentor called **SAGE**.
 
-Learn how markets work through interactive lessons, historical data, and an on-device AI mentor.
+Built for learning, exploration, and financial literacy, StockD transforms investing concepts into an engaging progression system while keeping users in complete control of their educational journey.
 
-**"SAGE explains. The user decides."**
-
----
-
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
-![AI](https://img.shields.io/badge/AI-Local%20Inference-green)
-![Offline](https://img.shields.io/badge/Offline-Capable-success)
-![Flutter](https://img.shields.io/badge/Built%20With-Flutter-02569B)
-
-</div>
+> **"SAGE explains. The user decides."**
 
 ---
 
-## Overview
+# What Is StockD?
 
-StockD is a desktop-first educational platform designed to teach stock market fundamentals through gamified progression, real historical market context, and a fully local AI tutor called **SAGE**.
+StockD combines:
 
-Instead of focusing on stock picks or trading signals, StockD focuses on understanding:
+- Duolingo-style progression
+- Real historical market context
+- Interactive AI-powered explanations
+- Native desktop performance
+- Fully local AI inference
 
-* How markets function
-* Why prices move
-* How investors evaluate companies
-* Market psychology and risk
-* Technical and fundamental analysis concepts
+Users advance through worlds and levels while learning:
 
-Users progress through structured learning worlds while receiving contextual explanations from SAGE whenever they need help.
+- Stock market fundamentals
+- Price charts and market structure
+- Technical indicators
+- Company fundamentals
+- Market psychology and behavior
+- Risk and volatility concepts
 
-> StockD teaches market literacy—not investment advice.
+When users answer incorrectly, SAGE provides contextual explanations using historical market examples and educational insights.
 
----
-
-## Why StockD?
-
-Most investing apps assume users already understand financial markets.
-
-StockD takes a different approach.
-
-### Learn Through Progression
-
-Inspired by modern learning platforms, StockD transforms financial education into an interactive journey featuring:
-
-* XP and progression systems
-* Streak tracking
-* Hearts and challenge mechanics
-* Unlockable learning worlds
-* Achievement-based progression
-
-### Learn With Context
-
-Rather than abstract definitions, concepts are taught using:
-
-* Historical market examples
-* Real-world scenarios
-* Interactive chart analysis
-* Contextual explanations
-
-### Learn Privately
-
-All AI processing happens locally on your machine.
-
-No cloud AI services.
-No subscriptions.
-No data collection required.
+**StockD is designed to help users understand how markets work—not tell them what to buy, sell, or invest in.**
 
 ---
 
-## Features
+# Integrated AI Runtime & Optimizations
 
-### Educational Experience
+StockD ships with a fully integrated, pre-compiled AI engine called **SAGE**. The runtime is compiled as a standalone sidecar binary using PyInstaller, stripped of debug overhead, and tailored with specific hardware optimizations across architectures.
 
-* Structured learning curriculum
-* Progressive difficulty levels
-* Interactive quizzes
-* Historical market examples
-* Dynamic explanations
-* AI-assisted tutoring
+When the application launches, it automatically spawns the local AI runtime as a background child process, initializes TensorFlow, and detects available hardware acceleration.
 
-### SAGE AI Mentor
+## Hardware Acceleration Matrix
 
-* Context-aware explanations
-* Technical indicator guidance
-* Market behavior insights
-* Historical event analysis
-* Interactive chatbot interface
+| Platform Identifier | Architecture | Backend Engine / Framework | Acceleration Mechanism | Requirements |
+|---------------------|-------------|----------------------------|------------------------|-------------|
+| windows-x64-nvidia | x64 | TensorFlow 2.10.1 | Direct CUDA Core Hooking | NVIDIA Driver + CUDA 11.2 + cuDNN 8.1 |
+| windows-x64-intel | x64 | TensorFlow 2.10.1 + Intel Extension | Intel oneAPI / oneDNN | Intel Arc or Iris Xe |
+| windows-x64-amd | x64 | TensorFlow 2.10.1 Base | AVX2 CPU Vector Optimization | Standard CPU |
+| mac-arm | ARM64 | TensorFlow 3.x + tensorflow-metal | Apple Metal Performance Shaders (MPS) | Apple Silicon |
+| mac-intel | x64 | TensorFlow 3.x Base | AVX / AVX2 CPU Instructions | Intel Mac |
+| linux-x64-nvidia | x64 | TensorFlow 3.x + Bundled CUDA | Self-Contained CUDA / cuDNN v12 Runtime | NVIDIA Driver |
+| linux-x64-intel | x64 | TensorFlow 3.x + Intel Extension | Intel oneDNN Optimizations | Intel Hardware |
+| linux-x64-amd | x64 | TensorFlow 3.x Base | CPU Vectorization | Standard Linux |
+| linux-arm64 | ARM64 | TensorFlow 3.x Base | AArch64 NEON SIMD | ARM64 Linux |
 
-### Market Concepts Covered
-
-* Market structure
-* Exchanges and order books
-* Candlestick analysis
-* Support and resistance
-* Trends and momentum
-* Volatility concepts
-* Company fundamentals
-* Financial statements
-* Valuation metrics
-* Investor psychology
-
-### Platform Features
-
-* Native desktop experience
-* Hardware-accelerated AI inference
-* Offline-capable architecture
-* Cross-platform support
-* Local-first design
-* No external AI APIs
+No Python installation, manual environment configuration, or command-line setup is required. Everything executes within the application bundle.
 
 ---
 
-## Screenshots
+# Features
 
-> Screenshots and demos coming soon.
-
-Suggested images:
-
-* Dashboard
-* Learning World Selection
-* Quiz Interface
-* SAGE Chat Assistant
-* Market Chart Analysis
-* Achievement System
-
----
-
-## How SAGE Works
-
-SAGE is StockD's integrated educational AI engine.
-
-When users encounter difficult concepts, answer questions incorrectly, or request clarification, SAGE provides explanations using:
-
-* Historical market context
-* Educational examples
-* Technical analysis concepts
-* Fundamental analysis concepts
-* Guided reasoning
-
-### SAGE Is
-
-✅ A teacher
-
-✅ A coach
-
-✅ An explainer
-
-✅ A learning companion
-
-### SAGE Is Not
-
-❌ A financial advisor
-
-❌ A stock recommendation engine
-
-❌ A trading bot
-
-❌ A prediction system
-
-❌ An autonomous portfolio manager
+- Gamified learning progression
+- XP, streaks, achievements, and hearts
+- AI-powered educational coaching
+- Interactive SAGE chatbot
+- Historical market analysis
+- RSI, SMA, trend, and volatility explanations
+- Interactive charts and visualizations
+- Hardware-accelerated local inference
+- Native desktop performance
+- Offline-capable architecture
+- Windows, macOS, Linux, and ARM64 support
 
 ---
 
-## Local AI Runtime
+# Platform Downloads
 
-StockD includes a fully integrated AI runtime distributed alongside the application.
+StockD provides platform-specific installers optimized for each hardware environment.
 
-At launch, StockD automatically:
+> ⚠️ **Important Note on Large Files (macOS & NVIDIA Linux)**  
+> Due to the massive size of the bundled AI models and CUDA libraries (up to 5.7 GB), GitHub requires these specific installers to be split into multiple parts (`.part_aa`, `.part_ab`, etc.).
 
-1. Starts the SAGE sidecar process
-2. Initializes TensorFlow
-3. Detects available hardware acceleration
-4. Loads educational AI models
-5. Establishes local communication channels
+Download all split parts into the same folder and reconstruct them before running the installer.
 
-No additional setup is required.
+## Windows (x64)
 
-Users do not need to install:
+### NVIDIA GPUs
+`StockD-windows-x64-nvidia-setup.exe`
 
-* Python
-* CUDA Toolkits
-* TensorFlow
-* AI frameworks
-* External dependencies
+### AMD GPUs
+`StockD-windows-x64-amd-setup.exe`
 
-Everything ships with the application.
+### Intel Graphics / CPU Systems
+`StockD-windows-x64-intel-setup.exe`
 
----
+> **Windows SmartScreen Notice:** Because StockD bundles a complete local AI runtime, Windows may display: *Windows protected your PC*. Select **More info → Run anyway**.
 
-## Hardware Acceleration
+## macOS
 
-| Platform            | Architecture | Acceleration         |
-| ------------------- | ------------ | -------------------- |
-| Windows NVIDIA      | x64          | CUDA                 |
-| Windows Intel       | x64          | oneDNN / oneAPI      |
-| Windows AMD         | x64          | AVX2                 |
-| macOS Apple Silicon | ARM64        | Metal (MPS)          |
-| macOS Intel         | x64          | AVX / AVX2           |
-| Linux NVIDIA        | x64          | Bundled CUDA Runtime |
-| Linux Intel         | x64          | oneDNN               |
-| Linux AMD           | x64          | CPU Vectorization    |
-| Linux ARM64         | ARM64        | NEON SIMD            |
+### Apple Silicon (ARM64)
 
----
-
-## Architecture
-
-```text
-┌─────────────────────────┐
-│  Flutter Desktop Client │
-└───────────┬─────────────┘
-            │
-            │ JSON / HTTP / WebSockets
-            │
-┌───────────▼─────────────┐
-│     SAGE AI Engine      │
-│  Python + TensorFlow    │
-└─────────────────────────┘
+```bash
+cd ~/Downloads
+cat StockD-mac-arm.dmg.part_* > StockD-mac-arm.dmg
 ```
 
-### Frontend
+### Intel Macs
 
-Responsible for:
-
-* Rendering
-* Navigation
-* Progression systems
-* Charts and visualizations
-* XP and achievements
-* User interaction
-
-### AI Sidecar
-
-Responsible for:
-
-* Educational explanations
-* Market analysis
-* Context management
-* Local inference
-* Technical indicator interpretation
-
-### Benefits
-
-* Low latency
-* Process isolation
-* Hardware acceleration
-* Fault containment
-* Offline operation
-* Cross-platform portability
-
----
-
-## Technology Stack
-
-| Layer            | Technology                 |
-| ---------------- | -------------------------- |
-| UI Framework     | Flutter 3.x                |
-| State Management | Riverpod                   |
-| Navigation       | GoRouter                   |
-| Charts           | fl_chart                   |
-| Animations       | flutter_animate            |
-| AI Runtime       | FastAPI                    |
-| Machine Learning | TensorFlow                 |
-| Data Source      | Historical Market Datasets |
-
----
-
-## Curriculum
-
-### World 1 — Market Basics
-
-**Topics**
-
-* Equity ownership
-* Exchanges
-* Order books
-* Market indices
-
-**Difficulty:** Beginner
-
----
-
-### World 2 — Reading the Tape
-
-**Topics**
-
-* Candlesticks
-* Price action
-* Trend analysis
-* Support and resistance
-
-**Difficulty:** Beginner
-
----
-
-### World 3 — Fundamentals
-
-**Topics**
-
-* Earnings reports
-* Valuation metrics
-* Income statements
-* Balance sheets
-* Financial analysis
-
-**Difficulty:** Intermediate
-
----
-
-Each world currently contains:
-
-* 5 Levels
-* 10 Questions per Level
-* Dynamic AI explanations
-
-Additional worlds are planned.
-
----
-
-## Data Storage
-
-StockD stores application data in standard user-space locations.
-
-### Windows
-
-```text
-%APPDATA%\StockD\
+```bash
+cd ~/Downloads
+cat StockD-mac-intel.dmg.part_* > StockD-mac-intel.dmg
 ```
 
-### Linux
+Installation:
 
-```text
-~/.config/stockd/
+1. Open the generated DMG.
+2. Drag `StockD.app` into `/Applications`.
+
+If Gatekeeper blocks execution:
+
+**System Settings → Privacy & Security → Open Anyway**
+
+## Linux
+
+### NVIDIA Systems
+
+```bash
+# Debian/Ubuntu
+cat StockD-linux-x64-nvidia-1.2.0.deb.part_* > StockD-linux-x64-nvidia-1.2.0.deb
+
+# Fedora/RHEL
+cat StockD-linux-x64-nvidia-1.2.0.rpm.part_* > StockD-linux-x64-nvidia-1.2.0.rpm
 ```
 
-### macOS
+### AMD Systems
 
 ```text
-~/Library/Application Support/StockD/
+StockD-linux-x64-amd-1.2.0.deb
+StockD-linux-x64-amd-1.2.0.rpm
 ```
+
+### Intel Systems
+
+```text
+StockD-linux-x64-intel-1.2.0.deb
+StockD-linux-x64-intel-1.2.0.rpm
+```
+
+### ARM64 Systems
+
+```text
+StockD-linux-arm64-1.2.0.deb
+StockD-linux-arm64-1.2.0.rpm
+```
+
+### Linux Installation
+
+#### Debian / Ubuntu / Mint
+
+```bash
+sudo dpkg -i StockD-linux-*.deb
+sudo apt-get install -f
+```
+
+#### Fedora / RHEL / CentOS
+
+```bash
+sudo rpm -i StockD-linux-*.rpm
+```
+
+---
+
+# Technology Stack
+
+| Layer | Technology | Implementation Details |
+|---------|-----------|------------------------|
+| UI Rendering | Flutter 3.x | Native canvas-rendered desktop UI |
+| State Management | Riverpod | Reactive state architecture |
+| Navigation | GoRouter | Declarative route management |
+| Charts | fl_chart | High-performance financial charting |
+| Animation | flutter_animate | Gamification and progression effects |
+| AI Runtime | FastAPI + TensorFlow | Local AI sidecar engine |
+| Data Source | Historical Datasets | Bundled S&P 500 educational datasets |
+
+---
+
+# Architecture
+
+```text
+[ Flutter Desktop UI Application ]
+               │  ▲
+  Localhost    │  │  JSON Messages
+  loopback API │  │  (HTTP / WebSockets)
+               ▼  │
+ [ SAGE AI Sidecar Engine ]
+   (Python + TensorFlow)
+```
+
+## Frontend
+
+The Flutter frontend manages:
+
+- Rendering
+- Navigation
+- Charts
+- Progression systems
+- XP and streak tracking
+- Animations
+- User interaction
+
+## SAGE AI Engine
+
+The SAGE sidecar engine manages:
+
+- Educational explanations
+- Historical market analysis
+- Technical indicator interpretation
+- Machine learning inference
+- Context-aware tutoring
+
+## Communication Layer
+
+Flutter and SAGE communicate through localhost APIs using JSON messages.
+
+Benefits include:
+
+- Low latency
+- Process isolation
+- Hardware acceleration
+- Fault containment
+- Offline operation
+- Cross-platform portability
+
+---
+
+# Runtime Data Storage
+
+Persistent runtime data is stored using native user-space locations:
+
+- **Windows:** `%APPDATA%\StockD\`
+- **Linux:** `~/.config/stockd/`
+- **macOS:** `~/Library/Application Support/StockD/`
 
 No administrator privileges are required.
 
 ---
 
-## Privacy
+# Curriculum
+
+## World 1 — Market Basics
+
+**Concepts:** Equity ownership, Order books, Exchanges, Market indices  
+**Difficulty:** Beginner
+
+## World 2 — Reading the Tape
+
+**Concepts:** Candlesticks, Price action, Support and resistance, Trend analysis  
+**Difficulty:** Beginner
+
+## World 3 — Fundamentals
+
+**Concepts:** Earnings reports, Valuation metrics, Income statements, Balance sheets, Financial analysis  
+**Difficulty:** Intermediate
+
+Each world currently contains:
+
+- 5 Levels
+- 10 Questions per Level
+- Dynamic AI explanations powered by SAGE
+
+Additional worlds are planned.
+
+---
+
+# SAGE Philosophy
+
+## SAGE Is
+
+- A teacher
+- A coach
+- An explainer
+- A learning companion
+
+## SAGE Is Not
+
+- A financial advisor
+- A stock recommendation engine
+- A trading bot
+- A prediction system
+- An autonomous portfolio manager
+
+SAGE exists solely to improve financial literacy.
+
+---
+
+# Privacy & Local Processing
 
 StockD follows a local-first privacy model.
 
-### Local Processing
+- All machine learning models execute locally.
+- User interactions remain on-device.
+- No cloud AI APIs are required.
+- No subscription services are required.
+- Full functionality is available offline.
 
-* AI models run locally
-* User data remains on-device
-* No cloud inference
-* No external AI APIs
-* Offline functionality available
-
-### User Control
-
-* No mandatory accounts
-* No subscription requirement
-* No remote model dependency
+This architecture provides both privacy and low-latency educational experiences.
 
 ---
 
-## Downloads
+# Legal Notice
 
-Platform-specific installers are provided for:
+StockD is provided solely for educational and research purposes.
 
-* Windows x64
-* macOS Apple Silicon
-* macOS Intel
-* Linux x64 NVIDIA
-* Linux x64 AMD
-* Linux x64 Intel
-* Linux ARM64
+- StockD does not provide financial advice.
+- StockD does not provide investment recommendations.
+- StockD does not generate actionable buy/sell signals.
+- Historical market datasets are used exclusively for educational explanations.
+- Users should consult licensed financial professionals before making investment decisions.
 
-Some distributions include bundled AI models and acceleration libraries that exceed standard hosting limits and may be distributed as split archives.
-
-See release notes for platform-specific installation instructions.
-
----
-
-## Roadmap
-
-### Planned Features
-
-* Additional learning worlds
-* Advanced technical analysis curriculum
-* Options and derivatives education
-* Expanded historical datasets
-* Achievement expansion
-* Community challenge modes
-* Enhanced AI tutoring capabilities
-
----
-
-## Disclaimer
-
-StockD is provided for educational and research purposes only.
-
-StockD:
-
-* Does not provide financial advice
-* Does not provide investment recommendations
-* Does not generate buy/sell signals
-* Does not manage portfolios
-* Does not predict market outcomes
-
-Historical market data is used exclusively for educational explanations.
-
-Users should consult licensed financial professionals before making investment decisions.
-
----
-
-## License
-
-License information coming soon.
-
----
-
-<div align="center">
-
-### Learn the market. Understand the why.
-
-**StockD — Financial literacy powered by local AI.**
-
-</div>
+**StockD is an educational learning platform—not a trading platform.**
