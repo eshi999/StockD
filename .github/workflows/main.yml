@@ -14,24 +14,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux Targets
-          - { id: linux-x64-nvidia, os: ubuntu-latest, pkgs: "tensorflow[and-cuda]" }
-          - { id: linux-x64-intel, os: ubuntu-latest, pkgs: "tensorflow intel-extension-for-tensorflow" }
-          - { id: linux-x64-amd, os: ubuntu-latest, pkgs: "tensorflow" }
-          - { id: linux-arm64, os: ubuntu-24.04-arm, pkgs: "tensorflow" }
-          # macOS Targets
-          - { id: mac-intel, os: macos-15-intel, pkgs: "tensorflow" }
-          - { id: mac-arm, os: macos-15, pkgs: "tensorflow tensorflow-metal" }
-          # Windows Targets
-          - { id: windows-x64-nvidia, os: windows-latest, pkgs: "tensorflow[and-cuda]" }
-          - { id: windows-x64-intel, os: windows-latest, pkgs: "tensorflow intel-extension-for-tensorflow" }
-          - { id: windows-x64-amd, os: windows-latest, pkgs: "tensorflow" }
+          # Linux Targets (Modern TF + CUDA + Python 3.12)
+          - { id: linux-x64-nvidia, os: ubuntu-latest, py: "3.12", pkgs: "tensorflow[and-cuda]" }
+          - { id: linux-x64-intel, os: ubuntu-latest, py: "3.12", pkgs: "tensorflow intel-extension-for-tensorflow" }
+          - { id: linux-x64-amd, os: ubuntu-latest, py: "3.12", pkgs: "tensorflow" }
+          - { id: linux-arm64, os: ubuntu-24.04-arm, py: "3.12", pkgs: "tensorflow" }
+          
+          # macOS Targets (Modern TF + Metal + Python 3.12)
+          - { id: mac-intel, os: macos-15-intel, py: "3.12", pkgs: "tensorflow" }
+          - { id: mac-arm, os: macos-15, py: "3.12", pkgs: "tensorflow tensorflow-metal" }
+          
+          # Windows Targets (Pinned to TF 2.10.1 + Python 3.10 for Native GPU support)
+          - { id: windows-x64-nvidia, os: windows-latest, py: "3.10", pkgs: "tensorflow==2.10.1" }
+          - { id: windows-x64-intel, os: windows-latest, py: "3.10", pkgs: "tensorflow==2.10.1 intel-extension-for-tensorflow" }
+          - { id: windows-x64-amd, os: windows-latest, py: "3.10", pkgs: "tensorflow==2.10.1" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.py }}
           cache: 'pip'
           
       - name: Compile PyInstaller (Unix)
