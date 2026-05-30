@@ -23,9 +23,8 @@ jobs:
       matrix:
         include:
           # --- WINDOWS TARGETS ---
-          - { id: windows-x64-nvidia, os: windows-latest, platform: windows, arch: x64, pkgs: "tensorflow==2.10.1" }
-          - { id: windows-x64-amd, os: windows-latest, platform: windows, arch: x64, pkgs: "tensorflow==2.10.1" }
-          - { id: windows-x64-intel, os: windows-latest, platform: windows, arch: x64, pkgs: "tensorflow==2.10.1 intel-extension-for-tensorflow" }
+          # Single universal Windows installer since it runs on CPU
+          - { id: windows-x64, os: windows-latest, platform: windows, arch: x64, pkgs: "tensorflow==2.10.1" }
 
           # --- MACOS TARGETS ---
           - { id: mac-arm, os: macos-15, platform: macos, arch: arm64, pkgs: "tensorflow tensorflow-metal" }
@@ -83,7 +82,7 @@ jobs:
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: |
-          python -m pip install pyinstaller ${{ matrix.pkgs }} scikit-learn pandas yfinance fastapi uvicorn
+          python -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" scikit-learn pandas yfinance fastapi uvicorn
           cd ML
           python -m PyInstaller --name sage_backend --onedir --noconsole --clean --strip \
             --add-data "artifacts:artifacts" \
@@ -97,7 +96,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          python -m pip install pyinstaller ${{ matrix.pkgs }} scikit-learn pandas yfinance fastapi uvicorn
+          python -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" scikit-learn pandas yfinance fastapi uvicorn
           cd ML
           python -m PyInstaller --name sage_backend --onedir --noconsole --clean --strip `
             --add-data "artifacts;artifacts" `
@@ -133,7 +132,6 @@ jobs:
           OutFile "StockD-${{ matrix.id }}-setup.exe"
           InstallDir "`$PROGRAMFILES64\StockD"
           
-          # Inject Custom Installer Icons using Flutter's output
           Icon "windows\runner\resources\app_icon.ico"
           UninstallIcon "windows\runner\resources\app_icon.ico"
 
@@ -201,7 +199,6 @@ jobs:
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/pixmaps
           tar -C $BUNDLE -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/StockD-1.2.0/
           
-          # Inject Custom Linux Desktop Launcher Icon
           cp assets/images/StockD.png $DEB_ROOT/usr/share/pixmaps/stockd.png
           
           cat > $DEB_ROOT/usr/share/applications/stockd.desktop << EOF
@@ -243,7 +240,6 @@ jobs:
           
           tar -C $BUNDLE -cf - . | tar -xf - -C $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/lib/StockD-1.2.0/
           
-          # Inject Custom Linux Desktop Launcher Icon
           cp assets/images/StockD.png $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/share/pixmaps/stockd.png
           
           chmod 755 $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/lib/StockD-1.2.0/stockd
@@ -279,11 +275,10 @@ jobs:
       - name: Split Large Binaries
         shell: bash
         run: |
-          # Find any file larger than 1.9 GB (1900M) and split it
           find . -maxdepth 1 -type f -size +1900M | while read file; do
             echo "Splitting large file: $file"
             split -b 1900M "$file" "${file}.part_"
-            rm "$file" # Instantly deletes the original so it isn't uploaded!
+            rm "$file"
           done
 
       # ==========================================
