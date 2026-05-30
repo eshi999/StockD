@@ -23,8 +23,8 @@ jobs:
           - { id: windows-x64-intel, os: windows-latest, platform: windows, arch: x64, pkgs: "tensorflow==2.10.1 intel-extension-for-tensorflow" }
 
           # --- MACOS TARGETS ---
-          - { id: mac-arm, os: macos-14, platform: macos, arch: arm64, pkgs: "tensorflow tensorflow-metal" }
-          - { id: mac-intel, os: macos-13, platform: macos, arch: x64, pkgs: "tensorflow" }
+          - { id: mac-arm, os: macos-15, platform: macos, arch: arm64, pkgs: "tensorflow tensorflow-metal" }
+          - { id: mac-intel, os: macos-15-intel, platform: macos, arch: x64, pkgs: "tensorflow" }
 
           # --- LINUX TARGETS ---
           - { id: linux-x64-nvidia, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64, pkgs: "tensorflow[and-cuda]" }
