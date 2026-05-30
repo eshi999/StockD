@@ -6,16 +6,16 @@ on:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
-  # STAGE 1: Build Hardware-Optimized SAGE Backends
+  # JOB 1: Compile the Hardware-Optimized Python Backends
   # ──────────────────────────────────────────────────────────────────────────
   build-backend:
-    name: Build Backend (${{ matrix.id }})
+    name: Build SAGE Backend (${{ matrix.id }})
     strategy:
       fail-fast: false
       matrix:
         include:
           # Linux Targets
-          - { id: linux-x64-nvidia, os: ubuntu-latest, pkgs: "tensorflow" }
+          - { id: linux-x64-nvidia, os: ubuntu-latest, pkgs: "tensorflow[and-cuda]" }
           - { id: linux-x64-intel, os: ubuntu-latest, pkgs: "tensorflow intel-extension-for-tensorflow" }
           - { id: linux-x64-amd, os: ubuntu-latest, pkgs: "tensorflow" }
           - { id: linux-arm64, os: ubuntu-24.04-arm, pkgs: "tensorflow" }
@@ -23,7 +23,7 @@ jobs:
           - { id: mac-intel, os: macos-15-intel, pkgs: "tensorflow" }
           - { id: mac-arm, os: macos-15, pkgs: "tensorflow tensorflow-metal" }
           # Windows Targets
-          - { id: windows-x64-nvidia, os: windows-latest, pkgs: "tensorflow" }
+          - { id: windows-x64-nvidia, os: windows-latest, pkgs: "tensorflow[and-cuda]" }
           - { id: windows-x64-intel, os: windows-latest, pkgs: "tensorflow intel-extension-for-tensorflow" }
           - { id: windows-x64-amd, os: windows-latest, pkgs: "tensorflow" }
     runs-on: ${{ matrix.os }}
@@ -34,7 +34,7 @@ jobs:
           python-version: "3.12"
           cache: 'pip'
           
-      - name: Build & Strip (Unix)
+      - name: Compile PyInstaller (Unix)
         if: runner.os != 'Windows'
         run: |
           python -m pip install pyinstaller ${{ matrix.pkgs }} scikit-learn pandas yfinance
@@ -44,7 +44,7 @@ jobs:
             --exclude-module tensorboard --exclude-module tensorflow_estimator \
             main.py
             
-      - name: Build & Strip (Windows)
+      - name: Compile PyInstaller (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
@@ -55,25 +55,26 @@ jobs:
             --exclude-module tensorboard --exclude-module tensorflow_estimator `
             main.py
             
-      - uses: actions/upload-artifact@v4
+      - name: Upload Compiled Backend
+        uses: actions/upload-artifact@v4
         with:
           name: sage-backend-${{ matrix.id }}
           path: ML/dist/sage_backend/
 
   # ──────────────────────────────────────────────────────────────────────────
-  # STAGE 2: Package OS & Architecture Installers (GUI + Backend Injection)
+  # JOB 2: Build GUI, Inject Backend, and Package Installers
   # ──────────────────────────────────────────────────────────────────────────
-  package:
+  package-app:
+    name: Package App (${{ matrix.id }})
     needs: build-backend
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux - x86_64 (amd64)
+          # Linux
           - { id: linux-x64-nvidia, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64 }
           - { id: linux-x64-intel, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64 }
           - { id: linux-x64-amd, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64 }
-          # Linux - ARM64 (aarch64)
           - { id: linux-arm64, os: ubuntu-24.04-arm, platform: linux, arch: arm64, deb_arch: arm64, rpm_arch: aarch64 }
           # macOS
           - { id: mac-intel, os: macos-15-intel, platform: macos }
@@ -88,31 +89,40 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - uses: actions/download-artifact@v4
+
+      - name: Download SAGE Backend
+        uses: actions/download-artifact@v4
         with:
           name: sage-backend-${{ matrix.id }}
           path: backend
 
-      # --- Linux GUI Build & Packaging ---
-      - name: Install Linux Deps
+      # ==========================================
+      # LINUX STAGES
+      # ==========================================
+      - name: Install Linux Build Dependencies
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm
 
-      - name: Package Linux
+      - name: Compile Flutter GUI (Linux)
         if: matrix.platform == 'linux'
         run: |
-          # 1. Build Flutter GUI
           flutter config --enable-linux-desktop
           flutter build linux --release --build-name=1.2.0
-          
-          # 2. Inject Backend
+
+      - name: Inject SAGE Backend (Linux)
+        if: matrix.platform == 'linux'
+        run: |
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
           cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
-          
-          # 3. DEB Packaging
+          chmod 755 $BUNDLE/data/flutter_assets/backend_bundle/sage_backend
+
+      - name: Build DEB Package (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           DEB_ROOT=build/linux/deb/StockD-1.2.0
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications
           tar -C $BUNDLE -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/StockD-1.2.0/
@@ -126,7 +136,7 @@ jobs:
           EOF
           
           ln -s /usr/lib/StockD-1.2.0/stockd $DEB_ROOT/usr/bin/stockd
-          chmod 755 $DEB_ROOT/usr/lib/StockD-1.2.0/stockd $DEB_ROOT/usr/lib/StockD-1.2.0/data/flutter_assets/backend_bundle/sage_backend
+          chmod 755 $DEB_ROOT/usr/lib/StockD-1.2.0/stockd
           
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd
@@ -138,8 +148,11 @@ jobs:
           EOF
           
           dpkg-deb --root-owner-group -Znone --build $DEB_ROOT StockD-${{ matrix.id }}-1.2.0.deb
-          
-          # 4. RPM Packaging
+
+      - name: Build RPM Package (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           RPM_ROOT=$HOME/rpmbuild
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS}
           tar -czf $RPM_ROOT/SOURCES/StockD-1.2.0.tar.gz -C $BUNDLE .
@@ -162,7 +175,7 @@ jobs:
           %install
           mkdir -p %{buildroot}/usr/lib/StockD-1.2.0 %{buildroot}/usr/bin %{buildroot}/usr/share/applications
           cp -r ./* %{buildroot}/usr/lib/StockD-1.2.0/
-          chmod 755 %{buildroot}/usr/lib/StockD-1.2.0/stockd %{buildroot}/usr/lib/StockD-1.2.0/data/flutter_assets/backend_bundle/sage_backend
+          chmod 755 %{buildroot}/usr/lib/StockD-1.2.0/stockd
           ln -s /usr/lib/StockD-1.2.0/stockd %{buildroot}/usr/bin/stockd
           printf '[Desktop Entry]\nName=StockD\nExec=/usr/bin/stockd\nType=Application\nCategories=Finance;\n' > %{buildroot}/usr/share/applications/stockd.desktop
 
@@ -175,48 +188,55 @@ jobs:
           rpmbuild -bb --define "__strip /bin/true" $RPM_ROOT/SPECS/StockD.spec
           mv $RPM_ROOT/RPMS/${{ matrix.rpm_arch }}/StockD-1.2.0-1.${{ matrix.rpm_arch }}.rpm StockD-${{ matrix.id }}-1.2.0.rpm
 
-      # --- macOS GUI Build & Packaging ---
-      - name: Package macOS
+      # ==========================================
+      # MACOS STAGES
+      # ==========================================
+      - name: Compile Flutter GUI (macOS)
         if: matrix.platform == 'macos'
         run: |
-          # 1. Build Flutter GUI
           flutter config --enable-macos-desktop
           flutter build macos --release
           find build/macos/Build/Products/Release/StockD.app -name "*.dSYM" -exec rm -rf {} +
-          
-          # 2. Inject Backend
+
+      - name: Inject SAGE Backend (macOS)
+        if: matrix.platform == 'macos'
+        run: |
           DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$DEST"
           cp -r backend/* "$DEST/"
-          
-          # 3. Build DMG
+
+      - name: Build DMG Installer (macOS)
+        if: matrix.platform == 'macos'
+        run: |
           rm -f StockD-${{ matrix.id }}.dmg
           sleep 2
           hdiutil create -volname "StockD-${{ matrix.id }}" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-${{ matrix.id }}.dmg
 
-      # --- Windows GUI Build & Packaging ---
-      - name: Package Windows
+      # ==========================================
+      # WINDOWS STAGES
+      # ==========================================
+      - name: Compile Flutter GUI (Windows)
         if: matrix.platform == 'windows'
         shell: powershell
         run: |
-          # 1. Build Flutter GUI
           flutter config --enable-windows-desktop
           flutter build windows --release
-          
-          # 2. Inject Backend
+
+      - name: Inject SAGE Backend (Windows)
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: |
           $assets = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
           New-Item -ItemType Directory -Force -Path $assets
           Copy-Item -Path "backend\*" -Destination $assets -Recurse
-          
-          # 3. Setup NSIS Environment
-          choco install nsis -y --no-progress
-          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Build Windows Installer
+      - name: Build NSIS Setup (Windows)
         if: matrix.platform == 'windows'
         shell: powershell
         run: |
-          # 4. Build Setup EXE
+          choco install nsis -y --no-progress
+          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          
           @"
           Name "StockD"
           OutFile "StockD-${{ matrix.id }}-setup.exe"
@@ -229,8 +249,10 @@ jobs:
           "@ | Out-File -Encoding ASCII StockD.nsi
           makensis.exe StockD.nsi
 
-      # --- Upload Final OS/Hardware Specific Artifacts ---
-      - name: Upload Installer Packages
+      # ==========================================
+      # FINAL UPLOAD
+      # ==========================================
+      - name: Upload Final OS Installers
         uses: actions/upload-artifact@v4
         with:
           name: StockD-${{ matrix.id }}-Installers
