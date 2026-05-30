@@ -32,7 +32,7 @@ jobs:
           # macOS (Metal handles Intel iGPU + AMD eGPU via Thunderbolt + Apple Silicon)
           - name: mac-intel
             os: macos-15-intel
-            tf_packages: tensorflow tensorflow-metal
+            tf_packages: tensorflow
             flutter_platform: macos
 
           - name: mac-arm
