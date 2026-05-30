@@ -28,7 +28,7 @@ jobs:
 
           # --- MACOS TARGETS ---
           - { id: mac-arm, os: macos-15, platform: macos, arch: arm64, pkgs: "tensorflow tensorflow-metal", python_ver: "3.12", mac_pkg: "3.12.3" }
-          - { id: mac-intel, os: macos-13, platform: macos, arch: x64, pkgs: "tensorflow", python_ver: "3.12", mac_pkg: "3.12.3" }
+          - { id: mac-intel, os: macos-15-intel, platform: macos, arch: x64, pkgs: "tensorflow", python_ver: "3.12", mac_pkg: "3.12.3" }
 
           # --- LINUX TARGETS ---
           - { id: linux-x64-nvidia, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64, pkgs: "tensorflow[and-cuda]", python_ver: "3.12" }
