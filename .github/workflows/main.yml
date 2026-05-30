@@ -116,12 +116,12 @@ jobs:
           tar -C $BUNDLE -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/StockD/
 
           cat > $DEB_ROOT/usr/share/applications/stockd.desktop << 'EOF'
-           [Desktop Entry]
-           Name=StockD
-           Exec=/usr/bin/stockd
-           Type=Application
-           Categories=Finance;Education;
-          EOF
+[Desktop Entry]
+Name=StockD
+Exec=/usr/bin/stockd
+Type=Application
+Categories=Finance;Education;
+EOF
 
           ln -s /usr/lib/StockD/stockd $DEB_ROOT/usr/bin/stockd
           chmod 755 \
@@ -129,13 +129,13 @@ jobs:
             $DEB_ROOT/usr/lib/StockD/data/flutter_assets/backend_bundle/sage_backend
 
           cat > $DEB_ROOT/DEBIAN/control << 'EOF'
-           Package: stockd
-           Version: 1.2.0
-           Architecture: amd64
-           Maintainer: Gautam Mahajan
-           Description: AI Stock App
-           Depends: libgtk-3-0
-          EOF
+Package: stockd
+Version: 1.2.0
+Architecture: amd64
+Maintainer: Gautam Mahajan
+Description: AI Stock App
+Depends: libgtk-3-0
+EOF
 
           dpkg-deb --root-owner-group -Znone --build $DEB_ROOT StockD-${{ matrix.name }}.deb
 
