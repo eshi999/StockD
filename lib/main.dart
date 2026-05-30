@@ -21,7 +21,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  // Define default window dimensions
   double targetWidth = 1280;
   double targetHeight = 720;
 
@@ -76,7 +75,6 @@ class _StockDAppState extends ConsumerState<StockDApp> with WindowListener {
 
   @override
   void onWindowClose() async {
-    // Gracefully terminate the backend process before closing the window
     ref.read(backendProvider.notifier).stopBackend();
     await windowManager.destroy();
   }
@@ -93,10 +91,7 @@ class _StockDAppState extends ConsumerState<StockDApp> with WindowListener {
       builder: (context, child) {
         if (backendStatus == BackendStatus.starting) {
           return Stack(
-            children: [
-              if (child != null) child,
-              const _BackendSplash(),
-            ],
+            children: [if (child != null) child, const _BackendSplash()],
           );
         }
         return child ?? const SizedBox.shrink();
@@ -108,10 +103,7 @@ class _StockDAppState extends ConsumerState<StockDApp> with WindowListener {
 final GoRouter _router = GoRouter(
   initialLocation: '/',
   routes: [
-    GoRoute(
-      path: '/',
-      builder: (context, state) => const OverworldScreen(),
-    ),
+    GoRoute(path: '/', builder: (context, state) => const OverworldScreen()),
     ShellRoute(
       builder: (context, state, child) => AppShell(child: child),
       routes: [
@@ -127,14 +119,8 @@ final GoRouter _router = GoRouter(
             return WorldScreen(worldIndex: i);
           },
         ),
-        GoRoute(
-          path: '/chat',
-          builder: (context, state) => const ChatScreen(),
-        ),
-        GoRoute(
-          path: '/sage',
-          builder: (context, state) => const SageScreen(),
-        ),
+        GoRoute(path: '/chat', builder: (context, state) => const ChatScreen()),
+        GoRoute(path: '/sage', builder: (context, state) => const SageScreen()),
         GoRoute(
           path: '/settings',
           builder: (context, state) => const SettingsPlaceholder(),
@@ -180,48 +166,149 @@ class AppShell extends StatelessWidget {
   }
 }
 
-class _BackendSplash extends ConsumerWidget {
+// ── Backend Splash ────────────────────────────────────────────────────────────
+class _BackendSplash extends ConsumerStatefulWidget {
   const _BackendSplash();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_BackendSplash> createState() => _BackendSplashState();
+}
+
+class _BackendSplashState extends ConsumerState<_BackendSplash>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       color: StockDTheme.bg,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: StockDTheme.gradient,
+            // ── Animated logo ──────────────────────────────────────────
+            AnimatedBuilder(
+              animation: _pulseCtrl,
+              builder: (_, child) => Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: StockDTheme.gradient,
+                  boxShadow: [
+                    BoxShadow(
+                      color: StockDTheme.sage.withValues(
+                        alpha: 0.25 + 0.25 * _pulseCtrl.value,
+                      ),
+                      blurRadius: 20 + 16 * _pulseCtrl.value,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: child,
               ),
               child: const Center(
-                child: Text('S',
-                    style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white)),
+                child: Text(
+                  'S',
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
+
             const SizedBox(height: 24),
-            Text('StockD',
-                style: StockDTheme.displayLarge.copyWith(fontSize: 32)),
-            const SizedBox(height: 32),
-            const SizedBox(
-              width: 200,
-              child: LinearProgressIndicator(
-                backgroundColor: StockDTheme.border,
-                valueColor: AlwaysStoppedAnimation(StockDTheme.sage),
+
+            // ── Title ──────────────────────────────────────────────────
+            Text(
+              'StockD',
+              style: StockDTheme.displayLarge.copyWith(fontSize: 32),
+            ),
+
+            const SizedBox(height: 6),
+
+            Text(
+              'INITIALIZING SAGE',
+              style: StockDTheme.labelSmall.copyWith(
+                color: StockDTheme.sage,
+                letterSpacing: 3,
               ),
             ),
+
             const SizedBox(height: 32),
+
+            // ── Progress bar ───────────────────────────────────────────
+            SizedBox(
+              width: 220,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: const LinearProgressIndicator(
+                  minHeight: 3,
+                  backgroundColor: StockDTheme.border,
+                  valueColor: AlwaysStoppedAnimation(StockDTheme.sage),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            Text(
+              'Loading ML backend — this may take up to 60s',
+              style: StockDTheme.labelSmall.copyWith(
+                color: StockDTheme.textMuted,
+              ),
+            ),
+
+            const SizedBox(height: 40),
+
+            // ── Skip button ────────────────────────────────────────────
             GestureDetector(
               onTap: () => ref.read(backendProvider.notifier).skipToOffline(),
-              child: const Text('Skip (run without SAGE)',
-                  style: TextStyle(decoration: TextDecoration.underline)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: StockDTheme.card,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: StockDTheme.border),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.bolt_rounded,
+                      size: 14,
+                      color: StockDTheme.textMuted,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Skip — run without SAGE',
+                      style: StockDTheme.labelSmall.copyWith(
+                        color: StockDTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
