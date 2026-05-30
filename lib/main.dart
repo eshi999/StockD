@@ -89,9 +89,14 @@ class _StockDAppState extends ConsumerState<StockDApp> with WindowListener {
       theme: StockDTheme.theme,
       routerConfig: _router,
       builder: (context, child) {
-        if (backendStatus == BackendStatus.starting) {
+        // Show splash if still starting.
+        // Once online or skipped (offline), child is rendered.
+        if (backendStatus == BackendStatus.starting || backendStatus == BackendStatus.offline) {
           return Stack(
-            children: [if (child != null) child, const _BackendSplash()],
+            children: [
+              if (child != null) child,
+              if (backendStatus != BackendStatus.offline) const _BackendSplash(),
+            ],
           );
         }
         return child ?? const SizedBox.shrink();
@@ -107,42 +112,18 @@ final GoRouter _router = GoRouter(
     ShellRoute(
       builder: (context, state, child) => AppShell(child: child),
       routes: [
-        GoRoute(
-          path: '/dashboard',
-          builder: (context, state) => const HomeScreen(),
-        ),
+        GoRoute(path: '/dashboard', builder: (context, state) => const HomeScreen()),
         GoRoute(
           path: '/world/:worldIndex',
           builder: (context, state) {
-            final i =
-                int.tryParse(state.pathParameters['worldIndex'] ?? '0') ?? 0;
+            final i = int.tryParse(state.pathParameters['worldIndex'] ?? '0') ?? 0;
             return WorldScreen(worldIndex: i);
           },
         ),
         GoRoute(path: '/chat', builder: (context, state) => const ChatScreen()),
         GoRoute(path: '/sage', builder: (context, state) => const SageScreen()),
-        GoRoute(
-          path: '/settings',
-          builder: (context, state) => const SettingsPlaceholder(),
-        ),
+        GoRoute(path: '/settings', builder: (context, state) => const SettingsPlaceholder()),
       ],
-    ),
-    GoRoute(
-      path: '/lesson/:worldIndex/:levelIndex',
-      builder: (context, state) {
-        final w = int.tryParse(state.pathParameters['worldIndex'] ?? '0') ?? 0;
-        final l = int.tryParse(state.pathParameters['levelIndex'] ?? '0') ?? 0;
-        return LessonScreen(worldIndex: w, levelIndex: l);
-      },
-    ),
-    GoRoute(
-      path: '/result/:worldIndex/:levelIndex',
-      builder: (context, state) {
-        final w = int.tryParse(state.pathParameters['worldIndex'] ?? '0') ?? 0;
-        final l = int.tryParse(state.pathParameters['levelIndex'] ?? '0') ?? 0;
-        final score = state.extra as int? ?? 0;
-        return ResultScreen(worldIndex: w, levelIndex: l, score: score);
-      },
     ),
   ],
 );
@@ -166,25 +147,20 @@ class AppShell extends StatelessWidget {
   }
 }
 
-// ── Backend Splash ────────────────────────────────────────────────────────────
+// ── Backend Splash with Retry/Skip ────────────────────────────────────────────
 class _BackendSplash extends ConsumerStatefulWidget {
   const _BackendSplash();
-
   @override
   ConsumerState<_BackendSplash> createState() => _BackendSplashState();
 }
 
-class _BackendSplashState extends ConsumerState<_BackendSplash>
-    with SingleTickerProviderStateMixin {
+class _BackendSplashState extends ConsumerState<_BackendSplash> with SingleTickerProviderStateMixin {
   late final AnimationController _pulseCtrl;
 
   @override
   void initState() {
     super.initState();
-    _pulseCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat(reverse: true);
   }
 
   @override
@@ -195,121 +171,45 @@ class _BackendSplashState extends ConsumerState<_BackendSplash>
 
   @override
   Widget build(BuildContext context) {
+    final status = ref.watch(backendProvider);
+
     return Container(
       color: StockDTheme.bg,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Animated logo ──────────────────────────────────────────
             AnimatedBuilder(
               animation: _pulseCtrl,
               builder: (_, child) => Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: StockDTheme.gradient,
-                  boxShadow: [
-                    BoxShadow(
-                      color: StockDTheme.sage.withValues(
-                        alpha: 0.25 + 0.25 * _pulseCtrl.value,
-                      ),
-                      blurRadius: 20 + 16 * _pulseCtrl.value,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
+                width: 72, height: 72,
+                decoration: BoxDecoration(shape: BoxShape.circle, gradient: StockDTheme.gradient),
                 child: child,
               ),
-              child: const Center(
-                child: Text(
-                  'S',
-                  style: TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
+              child: const Center(child: Text('S', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: Colors.white))),
             ),
-
             const SizedBox(height: 24),
-
-            // ── Title ──────────────────────────────────────────────────
-            Text(
-              'StockD',
-              style: StockDTheme.displayLarge.copyWith(fontSize: 32),
-            ),
-
-            const SizedBox(height: 6),
-
-            Text(
-              'INITIALIZING SAGE',
-              style: StockDTheme.labelSmall.copyWith(
-                color: StockDTheme.sage,
-                letterSpacing: 3,
-              ),
-            ),
-
-            const SizedBox(height: 32),
-
-            // ── Progress bar ───────────────────────────────────────────
-            SizedBox(
-              width: 220,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: const LinearProgressIndicator(
-                  minHeight: 3,
-                  backgroundColor: StockDTheme.border,
-                  valueColor: AlwaysStoppedAnimation(StockDTheme.sage),
-                ),
-              ),
-            ),
-
+            Text('StockD', style: StockDTheme.displayLarge.copyWith(fontSize: 32)),
             const SizedBox(height: 10),
-
-            Text(
-              'Loading ML backend — this may take up to 60s',
-              style: StockDTheme.labelSmall.copyWith(
-                color: StockDTheme.textMuted,
+            Text(status == BackendStatus.offline ? 'SAGE FAILED TO LOAD' : 'INITIALIZING SAGE',
+                style: StockDTheme.labelSmall.copyWith(color: StockDTheme.sage, letterSpacing: 3)),
+            const SizedBox(height: 32),
+            
+            // Logic to switch between loading and Retry/Skip
+            if (status == BackendStatus.offline)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton(onPressed: () => ref.read(backendProvider.notifier).retry(), child: const Text("Retry")),
+                  const SizedBox(width: 12),
+                  OutlinedButton(onPressed: () => ref.read(backendProvider.notifier).skipToOffline(), child: const Text("Skip")),
+                ],
+              )
+            else
+              const SizedBox(
+                width: 220,
+                child: LinearProgressIndicator(minHeight: 3, valueColor: AlwaysStoppedAnimation(StockDTheme.sage)),
               ),
-            ),
-
-            const SizedBox(height: 40),
-
-            // ── Skip button ────────────────────────────────────────────
-            GestureDetector(
-              onTap: () => ref.read(backendProvider.notifier).skipToOffline(),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: StockDTheme.card,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: StockDTheme.border),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.bolt_rounded,
-                      size: 14,
-                      color: StockDTheme.textMuted,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Skip — run without SAGE',
-                      style: StockDTheme.labelSmall.copyWith(
-                        color: StockDTheme.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
       ),
