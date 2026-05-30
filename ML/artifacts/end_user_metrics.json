@@ -1,0 +1,29 @@
+{
+  "directional_accuracy": 0.555325,
+  "baseline_accuracy": 0.5347158757450119,
+  "edge_vs_baseline": 0.020609124254988065,
+  "high_confidence_accuracy": 0.5654156884640481,
+  "high_confidence_coverage": 0.743285,
+  "avg_realized_future_return_on_high_conf_buy": 0.03304284084128377,
+  "n_windows_evaluated": 200000,
+  "rows_per_ticker_eval": 600,
+  "window_size": 30,
+  "horizon_days": 5,
+  "confidence_mode": "fixed",
+  "confidence_thresholds": {
+    "buy": 0.5401,
+    "avoid": 0.5114
+  },
+  "min_expected_return_for_buy": 0.002,
+  "calibrated_prob_quantiles": {
+    "p01": 0.32078521490097045,
+    "p05": 0.4178850442171097,
+    "p10": 0.4517169177532196,
+    "p50": 0.5332394540309906,
+    "p90": 0.6011240005493164,
+    "p95": 0.6389020740985869,
+    "p99": 0.7870456850528718
+  },
+  "used_calibration": true,
+  "model_used": "artifacts/sage_model_best.keras"
+}
