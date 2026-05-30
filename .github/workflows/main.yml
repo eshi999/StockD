@@ -14,23 +14,38 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux Targets (Modern TF + CUDA + Python 3.12)
+          # Linux Targets
           - { id: linux-x64-nvidia, os: ubuntu-latest, py: "3.12", pkgs: "tensorflow[and-cuda]" }
           - { id: linux-x64-intel, os: ubuntu-latest, py: "3.12", pkgs: "tensorflow intel-extension-for-tensorflow" }
           - { id: linux-x64-amd, os: ubuntu-latest, py: "3.12", pkgs: "tensorflow" }
           - { id: linux-arm64, os: ubuntu-24.04-arm, py: "3.12", pkgs: "tensorflow" }
           
-          # macOS Targets (Modern TF + Metal + Python 3.12)
+          # macOS Targets
           - { id: mac-intel, os: macos-15-intel, py: "3.12", pkgs: "tensorflow" }
           - { id: mac-arm, os: macos-15, py: "3.12", pkgs: "tensorflow tensorflow-metal" }
           
-          # Windows Targets (Pinned to TF 2.10.1 + Python 3.10 for Native GPU support)
+          # Windows Targets
           - { id: windows-x64-nvidia, os: windows-latest, py: "3.10", pkgs: "tensorflow==2.10.1" }
           - { id: windows-x64-intel, os: windows-latest, py: "3.10", pkgs: "tensorflow==2.10.1 intel-extension-for-tensorflow" }
           - { id: windows-x64-amd, os: windows-latest, py: "3.10", pkgs: "tensorflow==2.10.1" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      
+      # --- CRITICAL FIX: FREE DISK SPACE FOR CUDA ---
+      - name: Free Disk Space (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+      # ----------------------------------------------
+          
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.py }}
@@ -88,6 +103,20 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      
+      # --- FREE DISK SPACE FOR PACKAGING AS WELL ---
+      - name: Free Disk Space (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+      
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
