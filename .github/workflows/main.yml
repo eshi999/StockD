@@ -116,7 +116,7 @@ jobs:
           tar -C $BUNDLE -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/StockD/
 
           cat > $DEB_ROOT/usr/share/applications/stockd.desktop << 'EOF'
-[Desktop Entry]
+ [Desktop Entry]
 Name=StockD
 Exec=/usr/bin/stockd
 Type=Application
