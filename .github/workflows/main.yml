@@ -14,17 +14,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux Targets
           - { id: linux-x64-nvidia, os: ubuntu-latest, py: "3.12", pkgs: "tensorflow[and-cuda]" }
           - { id: linux-x64-intel, os: ubuntu-latest, py: "3.12", pkgs: "tensorflow intel-extension-for-tensorflow" }
           - { id: linux-x64-amd, os: ubuntu-latest, py: "3.12", pkgs: "tensorflow" }
           - { id: linux-arm64, os: ubuntu-24.04-arm, py: "3.12", pkgs: "tensorflow" }
-          
-          # macOS Targets
           - { id: mac-intel, os: macos-15-intel, py: "3.12", pkgs: "tensorflow" }
           - { id: mac-arm, os: macos-15, py: "3.12", pkgs: "tensorflow tensorflow-metal" }
-          
-          # Windows Targets
           - { id: windows-x64-nvidia, os: windows-latest, py: "3.10", pkgs: "tensorflow==2.10.1" }
           - { id: windows-x64-intel, os: windows-latest, py: "3.10", pkgs: "tensorflow==2.10.1 intel-extension-for-tensorflow" }
           - { id: windows-x64-amd, os: windows-latest, py: "3.10", pkgs: "tensorflow==2.10.1" }
@@ -32,7 +27,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # --- CRITICAL FIX: FREE DISK SPACE FOR CUDA ---
       - name: Free Disk Space (Ubuntu)
         if: runner.os == 'Linux'
         uses: jlumbroso/free-disk-space@main
@@ -44,7 +38,6 @@ jobs:
           large-packages: true
           docker-images: true
           swap-storage: true
-      # ----------------------------------------------
           
       - uses: actions/setup-python@v5
         with:
@@ -88,15 +81,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux
           - { id: linux-x64-nvidia, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64 }
           - { id: linux-x64-intel, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64 }
           - { id: linux-x64-amd, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64 }
           - { id: linux-arm64, os: ubuntu-24.04-arm, platform: linux, arch: arm64, deb_arch: arm64, rpm_arch: aarch64 }
-          # macOS
           - { id: mac-intel, os: macos-15-intel, platform: macos }
           - { id: mac-arm, os: macos-15, platform: macos }
-          # Windows
           - { id: windows-x64-nvidia, os: windows-latest, platform: windows }
           - { id: windows-x64-intel, os: windows-latest, platform: windows }
           - { id: windows-x64-amd, os: windows-latest, platform: windows }
@@ -104,7 +94,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # --- FREE DISK SPACE FOR PACKAGING AS WELL ---
       - name: Free Disk Space (Ubuntu)
         if: runner.os == 'Linux'
         uses: jlumbroso/free-disk-space@main
@@ -116,10 +105,21 @@ jobs:
           large-packages: true
           docker-images: true
           swap-storage: true
-      
-      - uses: subosito/flutter-action@v2
+
+      # --- Conditional Flutter Setup ---
+      - name: Setup Flutter (Standard)
+        if: matrix.id != 'linux-arm64'
+        uses: subosito/flutter-action@v2
         with:
           channel: stable
+
+      - name: Setup Flutter (Linux ARM64 Manual Clone)
+        if: matrix.id == 'linux-arm64'
+        run: |
+          git clone https://github.com/flutter/flutter.git -b stable $HOME/flutter
+          echo "$HOME/flutter/bin" >> $GITHUB_PATH
+          $HOME/flutter/bin/flutter precache
+      # ---------------------------------
 
       - name: Download SAGE Backend
         uses: actions/download-artifact@v4
@@ -266,7 +266,6 @@ jobs:
         shell: powershell
         run: |
           choco install nsis -y --no-progress
-          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           
           @"
           Name "StockD"
@@ -278,7 +277,9 @@ jobs:
             CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe"
           SectionEnd
           "@ | Out-File -Encoding ASCII StockD.nsi
-          makensis.exe StockD.nsi
+          
+          # Use absolute path to bypass stale PowerShell variables
+          & "C:\Program Files (x86)\NSIS\makensis.exe" StockD.nsi
 
       # ==========================================
       # FINAL UPLOAD
