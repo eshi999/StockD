@@ -5,7 +5,6 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  # Keeps the manual trigger button, but removes the choices
   workflow_dispatch: 
 
 jobs:
@@ -269,15 +268,30 @@ jobs:
           rm -rf $RPM_ROOT
 
       # ==========================================
-      # ARTIFACT UPLOADS
+      # SPLIT MASSIVE FILES (Bypass 2GB Limit)
       # ==========================================
-      - name: Upload Generated Packages
-        uses: actions/upload-artifact@v4
+      - name: Split Large Binaries
+        shell: bash
+        run: |
+          # Find any file larger than 1.9 GB (1900M) and split it
+          find . -maxdepth 1 -type f -size +1900M | while read file; do
+            echo "Splitting large file: $file"
+            split -b 1900M "$file" "${file}.part_"
+            rm "$file" # Delete the original massive file to save space
+          done
+
+      # ==========================================
+      # DIRECT RELEASE UPLOAD (Bypass Storage Quota)
+      # ==========================================
+      - name: Upload Directly to GitHub Releases
+        uses: softprops/action-gh-release@v2
         with:
-          name: compiled-binaries-${{ matrix.id }}
-          path: |
-            *.zip
+          tag_name: "latest"
+          name: "StockD-1.2.0"
+          make_latest: true
+          files: |
             *.exe
             *.dmg
             *.deb
             *.rpm
+            *.part_*
