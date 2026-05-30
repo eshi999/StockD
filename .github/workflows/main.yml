@@ -23,12 +23,11 @@ jobs:
       matrix:
         include:
           # --- WINDOWS TARGETS ---
-          # TF 2.10 strictly requires Python <= 3.10
           - { id: windows-x64, os: windows-latest, platform: windows, arch: x64, pkgs: "tensorflow==2.10.1", python_ver: "3.10" }
 
           # --- MACOS TARGETS ---
-          - { id: mac-arm, os: macos-15, platform: macos, arch: arm64, pkgs: "tensorflow tensorflow-metal", python_ver: "3.12", mac_pkg: "3.12.3" }
-          - { id: mac-intel, os: macos-15-intel, platform: macos, arch: x64, pkgs: "tensorflow", python_ver: "3.12", mac_pkg: "3.12.3" }
+          - { id: mac-arm, os: macos-26, platform: macos, arch: arm64, pkgs: "tensorflow tensorflow-metal", python_ver: "3.12", mac_pkg: "3.12.3" }
+          - { id: mac-intel, os: macos-26-intel, platform: macos, arch: x64, pkgs: "tensorflow", python_ver: "3.12", mac_pkg: "3.12.3" }
 
           # --- LINUX TARGETS ---
           - { id: linux-x64-nvidia, os: ubuntu-latest, platform: linux, arch: x64, deb_arch: amd64, rpm_arch: x86_64, pkgs: "tensorflow[and-cuda]", python_ver: "3.12" }
@@ -91,7 +90,7 @@ jobs:
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: |
-          # FORCING THE ABSOLUTE PATH ON MACOS
+          # FORCING THE ABSOLUTE PATH ON MACOS TO BYPASS HOMEBREW
           if [ "$RUNNER_OS" == "macOS" ]; then
             PY_CMD="/Library/Frameworks/Python.framework/Versions/${{ matrix.python_ver }}/bin/python3"
           else
@@ -181,7 +180,11 @@ jobs:
           rm -rf backend
           
           rm -f StockD-${{ matrix.id }}.dmg
-          sleep 2
+          
+          # Force macOS to flush all disk writes and release folder locks
+          sync
+          sleep 10
+          
           hdiutil create -volname "StockD-${{ matrix.id }}" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-${{ matrix.id }}.dmg
 
       # ==========================================
