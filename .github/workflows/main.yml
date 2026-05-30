@@ -90,9 +90,8 @@ jobs:
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS}
           tar -czf $RPM_ROOT/SOURCES/StockD-1.2.0.tar.gz -C $BUNDLE .
           
-          python3 - << 'PYEOF'
-          import os
-          spec = """Name: StockD
+          cat > $RPM_ROOT/SPECS/StockD.spec << EOF
+          Name: StockD
           Version: 1.2.0
           Release: 1
           Summary: StockD App
@@ -108,15 +107,13 @@ jobs:
           cp -r ./* %{buildroot}/usr/lib/StockD-1.2.0/
           chmod 755 %{buildroot}/usr/lib/StockD-1.2.0/stockd %{buildroot}/usr/lib/StockD-1.2.0/data/flutter_assets/backend_bundle/sage_backend
           ln -s /usr/lib/StockD-1.2.0/stockd %{buildroot}/usr/bin/stockd
-          printf '[Desktop Entry]\\nName=StockD\\nExec=/usr/bin/stockd\\nType=Application\\nCategories=Finance;\\n' > %{buildroot}/usr/share/applications/stockd.desktop
+          printf '[Desktop Entry]\nName=StockD\nExec=/usr/bin/stockd\nType=Application\nCategories=Finance;\n' > %{buildroot}/usr/share/applications/stockd.desktop
           %files
           /usr/lib/StockD-1.2.0
           /usr/bin/stockd
           /usr/share/applications/stockd.desktop
-          """
-          with open(os.path.expanduser("~/rpmbuild/SPECS/StockD.spec"), "w") as f:
-              f.write(spec)
-          PYEOF
+          EOF
+          
           rpmbuild -bb --define "__strip /bin/true" $RPM_ROOT/SPECS/StockD.spec
           mv $RPM_ROOT/RPMS/x86_64/StockD-1.2.0-1.x86_64.rpm StockD-linux-x64.rpm
       - uses: actions/upload-artifact@v4
@@ -152,7 +149,9 @@ jobs:
           sleep 2
           hdiutil create -volname "StockD-${{ matrix.name }}" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-macos-${{ matrix.name }}.dmg
       - uses: actions/upload-artifact@v4
-        with: {name: StockD-macos-${{ matrix.name }}, path: StockD-macos-${{ matrix.name }}.dmg}
+        with:
+          name: StockD-macos-${{ matrix.name }}
+          path: StockD-macos-${{ matrix.name }}.dmg
 
   package-windows:
     needs: build-backend
@@ -192,4 +191,6 @@ jobs:
           "@ | Out-File -Encoding ASCII StockD.nsi
           makensis.exe StockD.nsi
       - uses: actions/upload-artifact@v4
-        with: {name: StockD-windows-x64, path: StockD-windows-x64-setup.exe}
+        with:
+          name: StockD-windows-x64
+          path: StockD-windows-x64-setup.exe
