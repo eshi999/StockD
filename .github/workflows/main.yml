@@ -51,7 +51,6 @@ jobs:
           import os
 
           event = "${{ github.event_name }}"
-          # Checkboxes evaluate strictly during a manual trigger
           win = "${{ inputs.build_windows }}" == "true" or event != "workflow_dispatch"
           mac = "${{ inputs.build_macos }}" == "true" or event != "workflow_dispatch"
           lin = "${{ inputs.build_linux }}" == "true" or event != "workflow_dispatch"
@@ -71,7 +70,6 @@ jobs:
               matrix.append({"id": "linux-x64-intel", "os": "ubuntu-latest", "platform": "linux", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "pkgs": "tensorflow intel-extension-for-tensorflow", "python_ver": "3.12"})
               matrix.append({"id": "linux-arm64", "os": "ubuntu-24.04-arm", "platform": "linux", "arch": "arm64", "deb_arch": "arm64", "rpm_arch": "aarch64", "pkgs": "tensorflow", "python_ver": "3.12"})
 
-          # Securely write the JSON array to GitHub's internal output pipeline
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"matrix={json.dumps(matrix)}\n")
 
@@ -80,7 +78,6 @@ jobs:
   # ==========================================
   build:
     needs: setup-matrix
-    # Prevents the job from crashing if someone unchecks all three boxes
     if: ${{ needs.setup-matrix.outputs.matrix != '[]' }}
     name: Build (${{ matrix.id }})
     runs-on: ${{ matrix.os }}
@@ -133,7 +130,7 @@ jobs:
           $HOME/flutter/bin/flutter precache
 
       # ==========================================
-      # SAGE BACKEND COMPILATION
+      # SAGE BACKEND COMPILATION (Protobuf Fix Included)
       # ==========================================
       - name: Compile PyInstaller (Unix)
         if: runner.os != 'Windows'
@@ -146,7 +143,7 @@ jobs:
             PY_CMD="python"
           fi
           
-          $PY_CMD -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" scikit-learn pandas yfinance fastapi uvicorn
+          $PY_CMD -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           
           cd ML
           $PY_CMD -m PyInstaller --name sage_backend --onedir --noconsole --clean --strip \
@@ -162,7 +159,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          python -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" scikit-learn pandas yfinance fastapi uvicorn
+          python -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           cd ML
           python -m PyInstaller --name sage_backend --onedir --noconsole --clean --strip `
             --add-data "artifacts;artifacts" `
@@ -339,7 +336,7 @@ jobs:
           rm -rf $RPM_ROOT
 
       # ==========================================
-      # SPLIT MASSIVE FILES (Bypass 2GB Limit)
+      # SPLIT MASSIVE FILES
       # ==========================================
       - name: Split Large Binaries
         shell: bash
@@ -351,7 +348,7 @@ jobs:
           done
 
       # ==========================================
-      # DIRECT RELEASE UPLOAD (Bypass API Crashes)
+      # DIRECT RELEASE UPLOAD
       # ==========================================
       - name: Upload Directly to GitHub Releases
         uses: softprops/action-gh-release@v2
@@ -360,7 +357,7 @@ jobs:
           name: "StockD-1.2.0"
           make_latest: true
           fail_on_unmatched_files: false
-          overwrite: true
+          overwrite_files: true
           files: |
             *.exe
             *.dmg
