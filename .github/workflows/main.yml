@@ -61,7 +61,7 @@ jobs:
           path: ML/dist/sage_backend/
 
   # ──────────────────────────────────────────────────────────────────────────
-  # STAGE 2: Package OS & Architecture Installers
+  # STAGE 2: Package OS & Architecture Installers (GUI + Backend Injection)
   # ──────────────────────────────────────────────────────────────────────────
   package:
     needs: build-backend
@@ -93,7 +93,7 @@ jobs:
           name: sage-backend-${{ matrix.id }}
           path: backend
 
-      # --- Linux Packaging ---
+      # --- Linux GUI Build & Packaging ---
       - name: Install Linux Deps
         if: matrix.platform == 'linux'
         run: |
@@ -103,15 +103,16 @@ jobs:
       - name: Package Linux
         if: matrix.platform == 'linux'
         run: |
+          # 1. Build Flutter GUI
           flutter config --enable-linux-desktop
           flutter build linux --release --build-name=1.2.0
           
-          # Dynamically route to the correct architecture bundle folder (x64 vs arm64)
+          # 2. Inject Backend
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
           cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
           
-          # DEB Packaging
+          # 3. DEB Packaging
           DEB_ROOT=build/linux/deb/StockD-1.2.0
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications
           tar -C $BUNDLE -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/StockD-1.2.0/
@@ -138,7 +139,7 @@ jobs:
           
           dpkg-deb --root-owner-group -Znone --build $DEB_ROOT StockD-${{ matrix.id }}-1.2.0.deb
           
-          # RPM Packaging
+          # 4. RPM Packaging
           RPM_ROOT=$HOME/rpmbuild
           mkdir -p $RPM_ROOT/{SPECS,SOURCES,BUILD,BUILDROOT,RPMS}
           tar -czf $RPM_ROOT/SOURCES/StockD-1.2.0.tar.gz -C $BUNDLE .
@@ -174,31 +175,40 @@ jobs:
           rpmbuild -bb --define "__strip /bin/true" $RPM_ROOT/SPECS/StockD.spec
           mv $RPM_ROOT/RPMS/${{ matrix.rpm_arch }}/StockD-1.2.0-1.${{ matrix.rpm_arch }}.rpm StockD-${{ matrix.id }}-1.2.0.rpm
 
-      # --- macOS Packaging ---
+      # --- macOS GUI Build & Packaging ---
       - name: Package macOS
         if: matrix.platform == 'macos'
         run: |
+          # 1. Build Flutter GUI
           flutter config --enable-macos-desktop
           flutter build macos --release
           find build/macos/Build/Products/Release/StockD.app -name "*.dSYM" -exec rm -rf {} +
+          
+          # 2. Inject Backend
           DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$DEST"
           cp -r backend/* "$DEST/"
+          
+          # 3. Build DMG
           rm -f StockD-${{ matrix.id }}.dmg
           sleep 2
           hdiutil create -volname "StockD-${{ matrix.id }}" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-${{ matrix.id }}.dmg
 
-      # --- Windows Packaging ---
+      # --- Windows GUI Build & Packaging ---
       - name: Package Windows
         if: matrix.platform == 'windows'
         shell: powershell
         run: |
+          # 1. Build Flutter GUI
           flutter config --enable-windows-desktop
           flutter build windows --release
+          
+          # 2. Inject Backend
           $assets = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
           New-Item -ItemType Directory -Force -Path $assets
           Copy-Item -Path "backend\*" -Destination $assets -Recurse
           
+          # 3. Setup NSIS Environment
           choco install nsis -y --no-progress
           echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
@@ -206,6 +216,7 @@ jobs:
         if: matrix.platform == 'windows'
         shell: powershell
         run: |
+          # 4. Build Setup EXE
           @"
           Name "StockD"
           OutFile "StockD-${{ matrix.id }}-setup.exe"
@@ -218,7 +229,7 @@ jobs:
           "@ | Out-File -Encoding ASCII StockD.nsi
           makensis.exe StockD.nsi
 
-      # --- Upload Final Artifacts ---
+      # --- Upload Final OS/Hardware Specific Artifacts ---
       - name: Upload Installer Packages
         uses: actions/upload-artifact@v4
         with:
