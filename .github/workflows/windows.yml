@@ -9,23 +9,34 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build SAGE Backend (Nuitka)
-        shell: bash
+        shell: powershell
         run: |
-          # Use serial compilation to prevent C1060 "Out of Heap" errors
+          # 1. Install Dependencies
           pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance
           
-          python -m nuitka ML/main.py --standalone \
-            --assume-yes-for-downloads \
-            --output-dir=dist \
-            --jobs=8 \
-            --plugin-enable=anti-bloat \
-            --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite \
-            --include-package=tensorflow
+          # 2. Build Backend (Hardened for stability)
+          # --jobs=1: Avoids memory heap collision (C1060)
+          # --msvc=latest: Forces use of the newest compiler toolchain
+          python -m nuitka ML/main.py --standalone `
+            --assume-yes-for-downloads `
+            --output-dir=dist `
+            --jobs=8 `
+            --plugin-enable=anti-bloat `
+            --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite `
+            --include-package=tensorflow `
+            --msvc=latest
             
-          mkdir -p backend
-          cp -r dist/main.dist/* backend/
-          if [ -f "backend/main.exe" ]; then mv backend/main.exe backend/sage_backend.exe; fi
-          rm -rf dist
+          # 3. Handle Artifacts using PowerShell commands
+          New-Item -ItemType Directory -Path "backend" -Force
+          Copy-Item -Path "dist\main.dist\*" -Destination "backend\" -Recurse -Force
+          
+          # 4. Rename executable
+          if (Test-Path "backend\main.exe") { 
+              Rename-Item -Path "backend\main.exe" -NewName "sage_backend.exe" 
+          }
+          
+          # 5. Cleanup temp dist
+          Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Build Flutter GUI
         shell: powershell
@@ -38,8 +49,8 @@ jobs:
         run: |
           # Inject Backend
           $target = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
-          New-Item -ItemType Directory -Force -Path $target
-          Copy-Item -Recurse -Path "backend\*" -Destination $target
+          if (!(Test-Path $target)) { New-Item -ItemType Directory -Force -Path $target }
+          Copy-Item -Recurse -Path "backend\*" -Destination $target -Force
           Remove-Item -Recurse -Force -Path "backend"
 
           # Generate Icon
@@ -88,3 +99,9 @@ jobs:
           make_latest: true
           overwrite_files: true
           files: StockD-win-x64.exe
+
+      - name: Cleanup Workspace
+        if: always()
+        shell: powershell
+        run: |
+          Remove-Item -Recurse -Force -Path "." -Include "build", "dist", "backend", "StockD.nsi", "nsis_icon.ico" -ErrorAction SilentlyContinue
