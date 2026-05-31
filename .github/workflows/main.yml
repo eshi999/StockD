@@ -217,8 +217,8 @@ jobs:
           OutFile "StockD-${{ matrix.id }}-setup.exe"
           InstallDir "`$PROGRAMFILES64\StockD"
           
-          Icon "windows\runner\resources\app_icon.ico"
-          UninstallIcon "windows\runner\resources\app_icon.ico"
+          Icon "${__DIR__}\windows\runner\resources\app_icon.ico"
+          UninstallIcon "${__DIR__}\windows\runner\resources\app_icon.ico"
 
           Section
             SetOutPath "`$INSTDIR"
