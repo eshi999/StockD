@@ -2,7 +2,7 @@ name: macOS Build
 on: [workflow_dispatch]
 permissions: {contents: write}
 env:
-  MACOSX_DEPLOYMENT_TARGET: "14.0"
+  MACOSX_DEPLOYMENT_TARGET: "11.0"
   PYTHON_VERSION: "3.12.10"
 
 jobs:
@@ -11,8 +11,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - { runner: macos-15, arch: arm64, tf_pkg: "tensorflow-macos tensorflow-metal" }
-          - { runner: macos-15-intel, arch: x64, tf_pkg: "tensorflow" }
+          - { name: "Apple Silicon", runner: macos-15, arch: arm64, tf_pkg: "tensorflow-macos tensorflow-metal" }
+          - { name: "Intel", runner: macos-13, arch: x64, tf_pkg: "tensorflow" }
     steps:
       - uses: actions/checkout@v4
       
@@ -25,12 +25,13 @@ jobs:
           curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
           sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
 
-      - name: Build and Package
+      - name: Build and Package (${{ matrix.name }})
         run: |
-          python3 -m pip install --upgrade pip
-          pip3 install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance numpy
+          # Use --break-system-packages to bypass PEP 668 in the CI environment
+          python3 -m pip install --upgrade pip --break-system-packages
+          pip3 install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
           
-          # Nuitka Backend Build
+          # Nuitka Build
           cd ML && python3 -m nuitka main.py --standalone --output-dir=../dist --include-package=tensorflow --jobs=8 --low-memory
           
           chmod +x ../dist/main.dist/main
