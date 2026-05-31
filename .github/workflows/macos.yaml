@@ -18,7 +18,7 @@ jobs:
           curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
           sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
           export PATH="${PYTHON_BIN_PATH}:${PATH}"
-          pip3 install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
+          pip3 install nuitka zstandard ordered-set tensorflow tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
           cd ML && python3 -m nuitka main.py --standalone --output-dir=../dist_arm64 --include-package=tensorflow --jobs=8 --low-memory
           chmod +x ../dist_arm64/main.dist/main
           flutter build macos --release
