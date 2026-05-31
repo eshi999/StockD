@@ -161,10 +161,6 @@ jobs:
             --exclude-module tensorboard --exclude-module tensorflow_estimator \
             main.py
             
-          if [ "$RUNNER_OS" == "macOS" ]; then
-             delocate-listdeps dist/sage_backend/sage_backend
-             delocate-wheel -w . dist/sage_backend/sage_backend
-          fi
             
           mkdir -p ../backend
           cp -r dist/sage_backend/* ../backend/
