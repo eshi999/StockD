@@ -19,7 +19,7 @@ jobs:
           pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy
           
           # Nuitka Build
-          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=0
+          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=6 --low-memory
           
           # Flutter Build
           flutter build windows --release
