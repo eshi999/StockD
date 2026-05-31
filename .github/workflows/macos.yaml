@@ -26,7 +26,7 @@ jobs:
           python3 -m venv venv
           source venv/bin/activate
           pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
-          cd ML && python3 -m nuitka main.py --standalone --output-dir=../dist --include-package=tensorflow
+          cd ML && python3 -m nuitka main.py --standalone --output-dir=../dist --include-package=tensorflow --jobs=8
           hdiutil create -volname "StockD-${{ matrix.arch }}" -srcfolder "dist/main.dist" -ov -format UDZO "StockD-${{ matrix.arch }}.dmg"
 
       - name: Upload Release
