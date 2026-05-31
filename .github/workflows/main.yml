@@ -1,10 +1,6 @@
 name: StockD Multi-Platform Build Pipeline
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   
   # ==========================================
   # INTERACTIVE MANUAL TRIGGER MENU
@@ -144,7 +140,7 @@ jobs:
             PY_CMD="python"
           fi
           
-          $PY_CMD -m pip install pyinstaller delocate ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
+          $PY_CMD -m pip install pyinstaller delocate ${{ matrix.pkgs }} "numpy" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           
           cd ML
           $PY_CMD -m PyInstaller --name sage_backend --onedir --noconsole --clean \
