@@ -1,7 +1,6 @@
 name: StockD Multi-Platform Build Pipeline
-
-on:
   
+on:
   # ==========================================
   # INTERACTIVE MANUAL TRIGGER MENU
   # ==========================================
@@ -203,7 +202,7 @@ jobs:
 
           choco install nsis -y --no-progress
           
-          # Use ImageMagick to create the perfect uncompressed ICO file natively
+          # 1. Generate the perfect NSIS-compliant icon
           magick "assets\images\StockD.png" -define icon:auto-resize=256,128,64,48,32,16 "nsis_icon.ico"
           
           @"
@@ -224,7 +223,16 @@ jobs:
           Section "Install"
             SetOutPath "`$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
-            CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe"
+            
+            # Install our perfect icon directly into the app directory
+            File "/oname=StockD_Logo.ico" "nsis_icon.ico"
+            
+            # Create the Start Menu Folder & Shortcut (Forced Icon)
+            CreateDirectory "`$SMPROGRAMS\StockD"
+            CreateShortcut "`$SMPROGRAMS\StockD\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\StockD_Logo.ico" 0
+            
+            # Create the Desktop Shortcut (Forced Icon)
+            CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\StockD_Logo.ico" 0
           SectionEnd
           "@ | Out-File -Encoding ASCII StockD.nsi
           
