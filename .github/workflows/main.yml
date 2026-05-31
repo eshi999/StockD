@@ -239,20 +239,51 @@ jobs:
           flutter build macos --release
           find build/macos/Build/Products/Release/StockD.app -name "*.dSYM" -exec rm -rf {} +
 
-      - name: Inject SAGE Backend & Pack (macOS)
+      - name: Inject SAGE Backend & Auto-Generate ICNS (macOS)
         if: matrix.platform == 'macos'
+        shell: bash
         run: |
           DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$DEST"
           cp -r backend/* "$DEST/"
           rm -rf backend
           
+          # 1. GENERATE THE .ICNS FILE NATIVELY
+          echo "Generating macOS .icns file from assets/images/StockD.png..."
+          mkdir StockD.iconset
+          sips -z 16 16     assets/images/StockD.png --out StockD.iconset/icon_16x16.png
+          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_16x16@2x.png
+          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_32x32.png
+          sips -z 64 64     assets/images/StockD.png --out StockD.iconset/icon_32x32@2x.png
+          sips -z 128 128   assets/images/StockD.png --out StockD.iconset/icon_128x128.png
+          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_128x128@2x.png
+          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_256x256.png
+          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_256x256@2x.png
+          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_512x512.png
+          sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
+          iconutil -c icns StockD.iconset
+          rm -R StockD.iconset
+
+          # 2. CREATE THE BRANDED DMG
+          echo "Installing create-dmg..."
+          brew install create-dmg
+          
           rm -f StockD-${{ matrix.id }}.dmg
-          
           sync
-          sleep 10
+          sleep 5
           
-          hdiutil create -volname "StockD-${{ matrix.id }}" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-${{ matrix.id }}.dmg
+          echo "Packaging application into DMG..."
+          create-dmg \
+            --volname "StockD-${{ matrix.id }}" \
+            --volicon "StockD.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "StockD.app" 175 120 \
+            --hide-extension "StockD.app" \
+            --app-drop-link 425 120 \
+            "StockD-${{ matrix.id }}.dmg" \
+            "build/macos/Build/Products/Release/StockD.app" || true
 
       # ==========================================
       # LINUX PIPELINE STAGES
