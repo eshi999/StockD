@@ -17,7 +17,7 @@ jobs:
           # 2. Build Backend (Hardened for stability)
           # --jobs=1: Prevents heap exhaustion errors (C1060)
           # --msvc=latest: Forces use of the newest compiler toolchain
-          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=1 --low-memory --msvc=latest --disable-ccache
+          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=4 --low-memory --msvc=latest --disable-ccache
           
           # 3. Build Frontend (Using your manual flutter setup)
           flutter build windows --release
