@@ -5,20 +5,39 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  
+  # ==========================================
+  # INTERACTIVE MANUAL TRIGGER MENU
+  # ==========================================
   workflow_dispatch: 
     inputs:
-      build_windows: { description: "Build Windows (Universal)", type: boolean, default: true }
-      build_macos: { description: "Build macOS (Intel & ARM)", type: boolean, default: true }
-      build_linux: { description: "Build Linux (Nvidia, Intel, AMD, ARM)", type: boolean, default: true }
+      build_windows:
+        description: "Build Windows (Universal)"
+        type: boolean
+        default: true
+      build_macos:
+        description: "Build macOS (Intel & ARM)"
+        type: boolean
+        default: true
+      build_linux:
+        description: "Build Linux (Nvidia, Intel, AMD, ARM)"
+        type: boolean
+        default: true
 
+# ==========================================
+# SILENCE NODE.JS 20 DEPRECATION WARNINGS
+# ==========================================
 env:
+  FORCE_JUST_ACTIONS_TO_NODE24: true
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  MACOSX_DEPLOYMENT_TARGET: "11.0"
 
 permissions:
   contents: write
 
 jobs:
+  # ==========================================
+  # THE DYNAMIC MATRIX GENERATOR (The Kill-Switch)
+  # ==========================================
   setup-matrix:
     name: Configure OS Targets
     runs-on: ubuntu-latest
@@ -29,143 +48,347 @@ jobs:
         id: set-matrix
         shell: python
         run: |
-          import json, os
+          import json
+          import os
+
+          event = "${{ github.event_name }}"
+          win = "${{ inputs.build_windows }}" == "true" or event != "workflow_dispatch"
+          mac = "${{ inputs.build_macos }}" == "true" or event != "workflow_dispatch"
+          lin = "${{ inputs.build_linux }}" == "true" or event != "workflow_dispatch"
+
           matrix = []
-          if "${{ inputs.build_windows }}" == "true":
+          
+          if win:
               matrix.append({"id": "windows-x64", "os": "windows-latest", "platform": "windows", "arch": "x64", "pkgs": "tensorflow==2.10.1", "python_ver": "3.10"})
-          if "${{ inputs.build_macos }}" == "true":
+          
+          if mac:
               matrix.append({"id": "mac-arm", "os": "macos-15", "platform": "macos", "arch": "arm64", "pkgs": "tensorflow tensorflow-metal", "python_ver": "3.12", "mac_pkg": "3.12.3"})
               matrix.append({"id": "mac-intel", "os": "macos-15-intel", "platform": "macos", "arch": "x64", "pkgs": "tensorflow", "python_ver": "3.12", "mac_pkg": "3.12.3"})
-          if "${{ inputs.build_linux }}" == "true":
+          
+          if lin:
               matrix.append({"id": "linux-x64-nvidia", "os": "ubuntu-latest", "platform": "linux", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "pkgs": "tensorflow[and-cuda]", "python_ver": "3.12"})
               matrix.append({"id": "linux-x64-amd", "os": "ubuntu-latest", "platform": "linux", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "pkgs": "tensorflow", "python_ver": "3.12"})
+              matrix.append({"id": "linux-x64-intel", "os": "ubuntu-latest", "platform": "linux", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "pkgs": "tensorflow intel-extension-for-tensorflow", "python_ver": "3.12"})
+              matrix.append({"id": "linux-arm64", "os": "ubuntu-24.04-arm", "platform": "linux", "arch": "arm64", "deb_arch": "arm64", "rpm_arch": "aarch64", "pkgs": "tensorflow", "python_ver": "3.12"})
+
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"matrix={json.dumps(matrix)}\n")
 
+  # ==========================================
+  # THE HEAVY BUILD FACTORY
+  # ==========================================
   build:
     needs: setup-matrix
     if: ${{ needs.setup-matrix.outputs.matrix != '[]' }}
     name: Build (${{ matrix.id }})
     runs-on: ${{ matrix.os }}
+    
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with: { python-version: ${{ matrix.python_ver }} }
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with: { channel: stable }
 
-      - name: Compile PyInstaller
-        shell: bash
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Setup Python (Linux & Windows)
+        if: runner.os != 'macOS'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python_ver }}
+          cache: 'pip'
+
+      - name: Setup Python (macOS Foundation Build)
+        if: runner.os == 'macOS'
         run: |
-          pip install pyinstaller delocate ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
-          cd ML
-          SEP=":"
-          if [ "$RUNNER_OS" == "Windows" ]; then SEP=";"; fi
-          pyinstaller --name sage_backend --onedir --noconsole --clean \
-            --add-data "artifacts${SEP}artifacts" \
-            --collect-all ssl --collect-all certifi --collect-all pandas --collect-all pyarrow \
-            --hidden-import "ssl" --hidden-import "certifi" \
-            --exclude-module tensorboard --exclude-module tensorflow_estimator main.py
+          curl -O https://www.python.org/ftp/python/${{ matrix.mac_pkg }}/python-${{ matrix.mac_pkg }}-macos11.pkg
+          sudo installer -pkg python-${{ matrix.mac_pkg }}-macos11.pkg -target /
+
+      - name: Setup Flutter (Standard)
+        if: matrix.id != 'linux-arm64'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Setup Flutter (Linux ARM64 Manual Clone)
+        if: matrix.id == 'linux-arm64'
+        run: |
+          git clone https://github.com/flutter/flutter.git -b stable $HOME/flutter
+          echo "$HOME/flutter/bin" >> $GITHUB_PATH
+          $HOME/flutter/bin/flutter precache
+
+      # ==========================================
+      # SAGE BACKEND COMPILATION (Protobuf Fix Included)
+      # ==========================================
+      - name: Compile PyInstaller (Unix)
+        if: runner.os != 'Windows'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+        run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            PY_CMD="/Library/Frameworks/Python.framework/Versions/${{ matrix.python_ver }}/bin/python3"
+          else
+            PY_CMD="python"
+          fi
           
+          $PY_CMD -m pip install pyinstaller delocate ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
+          
+          cd ML
+          $PY_CMD -m PyInstaller --name sage_backend --onedir --noconsole --clean \
+            --add-data "artifacts:artifacts" \
+            --collect-all ssl \
+            --collect-all certifi \
+            --collect-all pandas \
+            --collect-all pyarrow \
+            --collect-all scipy \
+            --hidden-import "ssl" \
+            --hidden-import "certifi" \
+            --runtime-tmpdir=. \
+            --collect-submodules ssl \
+            --exclude-module tensorboard --exclude-module tensorflow_estimator \
+            main.py
+            
           if [ "$RUNNER_OS" == "macOS" ]; then
              delocate-listdeps dist/sage_backend/sage_backend
              delocate-wheel -w . dist/sage_backend/sage_backend
           fi
-          
+            
           mkdir -p ../backend
           cp -r dist/sage_backend/* ../backend/
           rm -rf build dist
 
-      - name: Build Flutter GUI
+      - name: Compile PyInstaller (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
         run: |
-          flutter config --enable-${{ matrix.platform }}-desktop
-          flutter build ${{ matrix.platform }} --release
-          
-      - name: Inject and Fix Permissions
-        run: |
-          if [ "${{ matrix.platform }}" == "windows" ]; then
-             ASSETS="build/windows/x64/runner/Release/data/flutter_assets/backend_bundle"
-             mkdir -p $ASSETS && cp -r backend/* $ASSETS/
-          elif [ "${{ matrix.platform }}" == "macos" ]; then
-             DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
-             mkdir -p $DEST && cp -r backend/* $DEST/ && chmod +x "$DEST/sage_backend"
-          else
-             BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
-             mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
-             cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
-             chmod +x "$BUNDLE/data/flutter_assets/backend_bundle/sage_backend"
-          fi
+          python -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
+          cd ML
+          python -m PyInstaller --name sage_backend --onedir --noconsole --clean \
+            --add-data "artifacts;artifacts" \
+            --collect-all ssl \
+            --collect-all certifi \
+            --collect-all pandas \
+            --collect-all pyarrow \
+            --collect-all scipy \
+            --hidden-import "ssl" \
+            --hidden-import "certifi" \
+            --exclude-module tensorboard --exclude-module tensorflow_estimator \
+            main.py
+          mkdir -p ../backend
+          cp -r dist/sage_backend/* ../backend/
+          rm -rf build dist
 
-      - name: Package Windows (NSIS)
+      # ==========================================
+      # WINDOWS PIPELINE STAGES
+      # ==========================================
+      - name: Compile Flutter GUI (Windows)
         if: matrix.platform == 'windows'
         shell: powershell
         run: |
-          $nsis = @"
+          flutter config --enable-windows-desktop
+          flutter build windows --release
+
+      - name: Inject SAGE Backend & Pack (Windows)
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: |
+          $assets = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
+          New-Item -ItemType Directory -Force -Path $assets
+          Copy-Item -Path "backend\*" -Destination $assets -Recurse
+          Remove-Item -Recurse -Force -Path "backend"
+
+          choco install nsis -y --no-progress
+          
+          @"
           Name "StockD"
           OutFile "StockD-${{ matrix.id }}-setup.exe"
+          InstallDir "`$PROGRAMFILES64\StockD"
+          
+          Icon "windows\runner\resources\app_icon.ico"
+          UninstallIcon "windows\runner\resources\app_icon.ico"
+
           Section
             SetOutPath "`$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
+            CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe"
           SectionEnd
-          "@
-          $nsis | Out-File StockD.nsi
+          "@ | Out-File -Encoding ASCII StockD.nsi
+          
           & "C:\Program Files (x86)\NSIS\makensis.exe" StockD.nsi
 
-      - name: Package macOS (DMG)
+      # ==========================================
+      # MACOS PIPELINE STAGES
+      # ==========================================
+      - name: Compile Flutter GUI (macOS)
         if: matrix.platform == 'macos'
         run: |
+          flutter config --enable-macos-desktop
+          flutter build macos --release
+          find build/macos/Build/Products/Release/StockD.app -name "*.dSYM" -exec rm -rf {} +
+
+      - name: Inject SAGE Backend & Pack (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+          mkdir -p "$DEST"
+          cp -r backend/* "$DEST/"
+          rm -rf backend
+          
+          rm -f StockD-${{ matrix.id }}.dmg
+          
+          sync
+          sleep 10
+          
           hdiutil create -volname "StockD-${{ matrix.id }}" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-${{ matrix.id }}.dmg
 
-      - name: Package Linux (DEB & RPM)
+      # ==========================================
+      # LINUX PIPELINE STAGES
+      # ==========================================
+      - name: Install Linux Build Dependencies
         if: matrix.platform == 'linux'
         run: |
-          sudo apt-get install -y rpm
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm
+
+      - name: Compile Flutter GUI (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          flutter config --enable-linux-desktop
+          flutter build linux --release --build-name=1.2.0
+
+      - name: Inject SAGE Backend (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
+          mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
+          cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
+          chmod 755 $BUNDLE/data/flutter_assets/backend_bundle/sage_backend
+          
+          rm -rf backend
+
+      - name: Build DEB Package (Linux)
+        if: matrix.platform == 'linux'
+        run: |
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           DEB_ROOT=build/linux/deb/StockD-1.2.0
-          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0
-          cp -r $BUNDLE/* $DEB_ROOT/usr/lib/StockD-1.2.0/
-          echo -e "Package: stockd\nVersion: 1.2.0\nArchitecture: ${{ matrix.deb_arch }}\nMaintainer: Gautam Mahajan\nDescription: AI Stock App\nDepends: libgtk-3-0" > $DEB_ROOT/DEBIAN/control
-          dpkg-deb --root-owner-group --build $DEB_ROOT StockD-${{ matrix.id }}.deb
-          mkdir -p $HOME/rpmbuild/{BUILDROOT,SPECS}
-          cp -r $DEB_ROOT/usr/lib/StockD-1.2.0 $HOME/rpmbuild/BUILDROOT/
-          echo -e "Name: StockD\nVersion: 1.2.0\nRelease: 1\nSummary: StockD\n%files\n/usr/lib/StockD-1.2.0" > $HOME/rpmbuild/SPECS/stockd.spec
-          rpmbuild -bb --define "_topdir $HOME/rpmbuild" $HOME/rpmbuild/SPECS/stockd.spec
-          mv $HOME/rpmbuild/RPMS/*/*.rpm StockD-${{ matrix.id }}.rpm
+          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/pixmaps
+          tar -C $BUNDLE -cf - . | tar -xf - -C $DEB_ROOT/usr/lib/StockD-1.2.0/
+          
+          cp assets/images/StockD.png $DEB_ROOT/usr/share/pixmaps/stockd.png
+          
+          cat > $DEB_ROOT/usr/share/applications/stockd.desktop << EOF
+          [Desktop Entry]
+          Name=StockD
+          Exec=/usr/bin/stockd
+          Icon=stockd
+          Type=Application
+          Categories=Finance;Education;
+          EOF
+          
+          ln -s /usr/lib/StockD-1.2.0/stockd $DEB_ROOT/usr/bin/stockd
+          chmod 755 $DEB_ROOT/usr/lib/StockD-1.2.0/stockd
+          
+          cat > $DEB_ROOT/DEBIAN/control << EOF
+          Package: stockd
+          Version: 1.2.0
+          Architecture: ${{ matrix.deb_arch }}
+          Maintainer: Gautam Mahajan
+          Description: AI Stock App
+          Depends: libgtk-3-0
+          EOF
+          
+          dpkg-deb --root-owner-group -Znone --build $DEB_ROOT StockD-${{ matrix.id }}-1.2.0.deb
+          
+          rm -rf build/linux/deb
+
+      - name: Build RPM Package (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
+          RPM_ROOT=$HOME/rpmbuild
+          
+          mkdir -p $RPM_ROOT/{SPECS,RPMS}
+          mkdir -p $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/lib/StockD-1.2.0
+          mkdir -p $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/bin
+          mkdir -p $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/share/applications
+          mkdir -p $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/share/pixmaps
+          
+          tar -C $BUNDLE -cf - . | tar -xf - -C $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/lib/StockD-1.2.0/
+          
+          cp assets/images/StockD.png $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/share/pixmaps/stockd.png
+          
+          chmod 755 $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/lib/StockD-1.2.0/stockd
+          ln -s /usr/lib/StockD-1.2.0/stockd $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/bin/stockd
+          printf '[Desktop Entry]\nName=StockD\nExec=/usr/bin/stockd\nIcon=stockd\nType=Application\nCategories=Finance;\n' > $RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}/usr/share/applications/stockd.desktop
+          
+          cat > $RPM_ROOT/SPECS/StockD.spec << EOF
+          Name: StockD
+          Version: 1.2.0
+          Release: 1
+          Summary: StockD App
+          BuildArch: ${{ matrix.rpm_arch }}
+          License: Proprietary
+
+          %description
+          AI Coach.
+
+          %files
+          /usr/lib/StockD-1.2.0
+          /usr/bin/stockd
+          /usr/share/applications/stockd.desktop
+          /usr/share/pixmaps/stockd.png
+          EOF
+          
+          rpmbuild -bb --define "__strip /bin/true" --define "_topdir $RPM_ROOT" $RPM_ROOT/SPECS/StockD.spec
+          mv $RPM_ROOT/RPMS/${{ matrix.rpm_arch }}/StockD-1.2.0-1.${{ matrix.rpm_arch }}.rpm StockD-${{ matrix.id }}-1.2.0.rpm
+          
+          rm -rf $RPM_ROOT
 
       # ==========================================
-      # HYBRID SPLIT LOGIC
+      # HYBRID SPLIT & COMPRESSION STAGE
       # ==========================================
       - name: Split Large Binaries
         shell: bash
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
-            # Windows: 7-Zip Splitting (.7z.001, .7z.002)
+            # Windows: 7-Zip Multi-part Volume Archive (.7z.001, .7z.002, ...)
             find . -maxdepth 1 -type f -size +1900M -name "*.exe" | while read file; do
               echo "Compressing and splitting $file with 7-Zip..."
               7z a -v1900m "${file}.7z" "$file"
               rm "$file"
             done
           else
-            # Unix (macOS/Linux): Native GNU Splitting (.part_aa, .part_ab)
+            # Unix (macOS/Linux): Native Coreutils Stream Splitting (.part_aa, .part_ab, ...)
             find . -maxdepth 1 -type f -size +1900M \( -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" \) | while read file; do
-              echo "Splitting $file natively..."
+              echo "Splitting large file natively: $file"
               split -b 1900M "$file" "${file}.part_"
               rm "$file"
             done
           fi
-          
-      - name: Upload Releases
+
+      # ==========================================
+      # DIRECT RELEASE UPLOAD
+      # ==========================================
+      - name: Upload Directly to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "latest"
           name: "StockD-1.2.0"
           make_latest: true
+          fail_on_unmatched_files: false
           overwrite_files: true
           files: |
             *.exe
