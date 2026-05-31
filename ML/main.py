@@ -1,12 +1,13 @@
 # main.py — FastAPI server wrapping sage_bridge.py
+import os
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
 import sage_bridge as sage
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import os
 
-os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+
 app = FastAPI(title="StockD SAGE API", version="2.0.0")
 
 app.add_middleware(
