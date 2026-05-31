@@ -10,7 +10,7 @@ Built for learning, exploration, and financial literacy, StockD transforms inves
 
 ---
 
-## What Is StockD?
+# What Is StockD?
 
 StockD combines:
 
@@ -39,9 +39,9 @@ When users answer incorrectly, SAGE provides contextual explanations using histo
 
 StockD ships with a fully integrated local AI engine called **SAGE**.
 
-The runtime is compiled as a standalone sidecar binary using PyInstaller and launches automatically alongside the application. During startup, SAGE initializes TensorFlow and configures available hardware acceleration for the host platform.
+SAGE is packaged directly with the application and launches automatically during startup. The runtime initializes TensorFlow and configures available hardware acceleration for the host platform.
 
-No Python installation, environment setup, package management, or command-line configuration is required.
+No Python installation, package management, virtual environments, or command-line setup is required.
 
 Everything runs directly from the application bundle.
 
@@ -63,7 +63,7 @@ Everything runs directly from the application bundle.
 
 # Features
 
-### Learning & Progression
+## Learning & Progression
 
 * XP progression system
 * Daily streaks
@@ -71,7 +71,7 @@ Everything runs directly from the application bundle.
 * Heart-based challenge mechanics
 * Structured educational worlds
 
-### AI-Powered Coaching
+## AI-Powered Coaching
 
 * Interactive SAGE chatbot
 * Context-aware explanations
@@ -79,7 +79,7 @@ Everything runs directly from the application bundle.
 * Technical indicator education
 * Adaptive tutoring experiences
 
-### Market Education
+## Market Education
 
 * Historical market analysis
 * RSI, SMA, trend, and volatility explanations
@@ -87,7 +87,7 @@ Everything runs directly from the application bundle.
 * Market psychology concepts
 * Risk management education
 
-### Platform Capabilities
+## Platform Capabilities
 
 * Native desktop performance
 * Fully local AI inference
@@ -101,7 +101,7 @@ Everything runs directly from the application bundle.
 
 StockD provides platform-specific installers optimized for desktop environments.
 
-> **Important:** Some installers exceed GitHub's file-size limitations due to bundled AI models and runtime dependencies. These distributions are split into multiple archive segments and must be reconstructed before installation.
+> **Important:** Some distributions exceed GitHub's file-size limitations due to bundled AI models and runtime dependencies. Large packages may be distributed as multiple archive segments.
 
 ---
 
@@ -109,19 +109,19 @@ StockD provides platform-specific installers optimized for desktop environments.
 
 ### Universal x64 Installer
 
-A single Windows build supports all modern 64-bit Windows systems.
-
 ```text
 StockD-windows-x64-setup.exe
 ```
 
-This build automatically uses available CPU vectorization features and requires no hardware-specific download selection.
+Supports all modern 64-bit versions of Windows.
 
 ### Windows SmartScreen
 
 Because StockD bundles a complete local AI runtime, Windows may display:
 
-> Windows protected your PC
+```text
+Windows protected your PC
+```
 
 To continue:
 
@@ -135,27 +135,15 @@ More Info → Run Anyway
 
 ### Apple Silicon (M-Series)
 
-Download all installer parts into the same directory and reconstruct the image:
-
-```bash
-cd ~/Downloads
-
-cat StockD-mac-arm.dmg.part_* > StockD-mac-arm.dmg
+```text
+StockD-mac-arm64.dmg
 ```
-
-Open the resulting DMG and install StockD.
 
 ### Intel Macs
 
-Download all installer parts into the same directory and reconstruct the image:
-
-```bash
-cd ~/Downloads
-
-cat StockD-mac-intel.dmg.part_* > StockD-mac-intel.dmg
+```text
+StockD-mac-intel.dmg
 ```
-
-Open the resulting DMG and install StockD.
 
 ### Installation
 
@@ -163,12 +151,28 @@ Open the resulting DMG and install StockD.
 Drag StockD.app into /Applications
 ```
 
-If Gatekeeper blocks execution:
+### Gatekeeper & First Launch
+
+Because StockD includes a bundled AI runtime and supporting binaries, macOS may block execution on first launch.
+
+If StockD does not open:
 
 ```text
 System Settings
 → Privacy & Security
 → Open Anyway
+```
+
+If the application is still blocked, remove macOS quarantine attributes:
+
+```bash
+xattr -cr /Applications/StockD.app
+```
+
+Then launch normally:
+
+```bash
+open /Applications/StockD.app
 ```
 
 ---
@@ -177,20 +181,11 @@ System Settings
 
 ### NVIDIA Systems
 
-Large CUDA-enabled packages are distributed in multiple segments.
-
-Reconstruct before installation:
+Large CUDA-enabled packages may be distributed in multiple archive segments.
 
 ```bash
-# Debian / Ubuntu
-
 cat StockD-linux-x64-nvidia.deb.part_* \
 > StockD-linux-x64-nvidia.deb
-
-# Fedora / RHEL
-
-cat StockD-linux-x64-nvidia.rpm.part_* \
-> StockD-linux-x64-nvidia.rpm
 ```
 
 ### AMD Systems
@@ -260,7 +255,7 @@ sudo rpm -i StockD-linux-*.rpm
 * UI rendering
 * Navigation
 * Interactive charts
-* XP and progression systems
+* XP progression
 * Achievement tracking
 * User interaction
 
@@ -287,9 +282,59 @@ Benefits include:
 
 ---
 
+# Windows Networking Permissions
+
+StockD uses a local client-server architecture.
+
+The desktop application and SAGE run as separate processes and communicate through localhost networking using HTTP and WebSocket connections.
+
+Because SAGE hosts a local API service, Windows may display a firewall or networking permission prompt during first launch.
+
+### Why This Permission Is Requested
+
+The permission is required solely for communication between:
+
+```text
+StockD Desktop Application
+        ↔
+SAGE Local AI Engine
+```
+
+This connection enables:
+
+* AI tutoring requests
+* Educational explanations
+* Historical market analysis
+* Real-time communication
+* Progression-related AI interactions
+
+### Localhost Only
+
+StockD communicates through:
+
+```text
+127.0.0.1 (localhost)
+```
+
+Communication remains entirely on the local machine and is not exposed to external devices.
+
+### Firewall Guidance
+
+If Windows requests permission, allowing access on:
+
+```text
+Private Networks
+```
+
+is sufficient for normal operation.
+
+Public network access is not required.
+
+---
+
 # Runtime Data Storage
 
-StockD stores runtime data using native user-space directories.
+StockD stores application data using native user-space directories.
 
 ### Windows
 

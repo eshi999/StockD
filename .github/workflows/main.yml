@@ -126,9 +126,9 @@ jobs:
           $HOME/flutter/bin/flutter precache
 
       # ==========================================
-      # SAGE BACKEND COMPILATION
+      # SAGE BACKEND COMPILATION (NUITKA)
       # ==========================================
-      - name: Compile PyInstaller (Unix)
+      - name: Compile Nuitka (Unix)
         if: runner.os != 'Windows'
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
@@ -139,47 +139,47 @@ jobs:
             PY_CMD="python"
           fi
           
-          $PY_CMD -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
+          $PY_CMD -m pip install nuitka zstandard ordered-set ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           
           cd ML
-          $PY_CMD -m PyInstaller --name sage_backend --onedir --noconsole --clean \
-            --add-data "artifacts:artifacts" \
-            --collect-all ssl \
-            --collect-all certifi \
-            --collect-all pandas \
-            --collect-all pyarrow \
-            --collect-all scipy \
-            --hidden-import "ssl" \
-            --hidden-import "certifi" \
-            --runtime-tmpdir=. \
-            --collect-submodules ssl \
-            --exclude-module tensorboard --exclude-module tensorflow_estimator \
+          
+          $PY_CMD -m nuitka --standalone --assume-yes-for-downloads \
+            --output-dir=dist \
+            --include-data-dir=artifacts=artifacts \
+            --plugin-enable=anti-bloat \
+            --nofollow-import-to=tensorboard \
+            --nofollow-import-to=tensorflow_estimator \
+            --nofollow-import-to=tensorflow.compiler \
+            --nofollow-import-to=tensorflow.lite \
             main.py
             
           mkdir -p ../backend
-          cp -r dist/sage_backend/* ../backend/
-          rm -rf build dist
+          cp -r dist/main.dist/* ../backend/
+          mv ../backend/main ../backend/sage_backend || true
+          rm -rf dist
 
-      - name: Compile PyInstaller (Windows)
+      - name: Compile Nuitka (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          python -m pip install pyinstaller ${{ matrix.pkgs }} "numpy" "protobuf" scikit-learn pandas yfinance fastapi uvicorn
+          python -m pip install nuitka zstandard ordered-set ${{ matrix.pkgs }} scikit-learn pandas yfinance fastapi uvicorn
+          
           cd ML
-          python -m PyInstaller --name sage_backend --onedir --noconsole --clean \
-            --add-data "artifacts;artifacts" \
-            --collect-all ssl \
-            --collect-all certifi \
-            --collect-all pandas \
-            --collect-all pyarrow \
-            --collect-all scipy \
-            --hidden-import "ssl" \
-            --hidden-import "certifi" \
-            --exclude-module tensorboard --exclude-module tensorflow_estimator \
+
+          python -m nuitka --standalone --assume-yes-for-downloads \
+            --output-dir=dist \
+            --include-data-dir=artifacts=artifacts \
+            --plugin-enable=anti-bloat \
+            --nofollow-import-to=tensorboard \
+            --nofollow-import-to=tensorflow_estimator \
+            --nofollow-import-to=tensorflow.compiler \
+            --nofollow-import-to=tensorflow.lite \
             main.py
+            
           mkdir -p ../backend
-          cp -r dist/sage_backend/* ../backend/
-          rm -rf build dist
+          cp -r dist/main.dist/* ../backend/
+          mv ../backend/main.exe ../backend/sage_backend.exe || true
+          rm -rf dist
 
       # ==========================================
       # WINDOWS PIPELINE STAGES
@@ -202,7 +202,6 @@ jobs:
 
           choco install nsis -y --no-progress
           
-          # 1. Generate the perfect NSIS-compliant icon
           magick "assets\images\StockD.png" -define icon:auto-resize=256,128,64,48,32,16 "nsis_icon.ico"
           
           @"
@@ -212,7 +211,6 @@ jobs:
           OutFile "StockD-${{ matrix.id }}-setup.exe"
           InstallDir "`$PROGRAMFILES64\StockD"
           
-          # Hardcode the relative path to bypass PowerShell variable evaluation bugs
           !define MUI_ICON "nsis_icon.ico"
           !define MUI_UNICON "nsis_icon.ico"
           
@@ -223,15 +221,9 @@ jobs:
           Section "Install"
             SetOutPath "`$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
-            
-            # Install our perfect icon directly into the app directory
             File "/oname=StockD_Logo.ico" "nsis_icon.ico"
-            
-            # Create the Start Menu Folder & Shortcut (Forced Icon)
             CreateDirectory "`$SMPROGRAMS\StockD"
             CreateShortcut "`$SMPROGRAMS\StockD\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\StockD_Logo.ico" 0
-            
-            # Create the Desktop Shortcut (Forced Icon)
             CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\StockD_Logo.ico" 0
           SectionEnd
           "@ | Out-File -Encoding ASCII StockD.nsi
@@ -257,7 +249,6 @@ jobs:
           cp -r backend/* "$DEST/"
           rm -rf backend
           
-          # GENERATE THE .ICNS FILE NATIVELY
           echo "Generating macOS .icns file from assets/images/StockD.png..."
           mkdir StockD.iconset
           sips -z 16 16     assets/images/StockD.png --out StockD.iconset/icon_16x16.png
@@ -273,7 +264,10 @@ jobs:
           iconutil -c icns StockD.iconset
           rm -R StockD.iconset
 
-          # CREATE THE BRANDED DMG
+          echo "Injecting custom icon into the compiled .app bundle..."
+          cp StockD.icns "build/macos/Build/Products/Release/StockD.app/Contents/Resources/AppIcon.icns"
+          touch "build/macos/Build/Products/Release/StockD.app"
+
           echo "Installing create-dmg..."
           brew install create-dmg
           
@@ -316,7 +310,6 @@ jobs:
           mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
           cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
           chmod 755 $BUNDLE/data/flutter_assets/backend_bundle/sage_backend
-          
           rm -rf backend
 
       - name: Build DEB Package (Linux)
@@ -351,7 +344,6 @@ jobs:
           EOF
           
           dpkg-deb --root-owner-group -Znone --build $DEB_ROOT StockD-${{ matrix.id }}-1.2.0.deb
-          
           rm -rf build/linux/deb
 
       - name: Build RPM Package (Linux)
@@ -394,7 +386,6 @@ jobs:
           
           rpmbuild -bb --define "__strip /bin/true" --define "_topdir $RPM_ROOT" $RPM_ROOT/SPECS/StockD.spec
           mv $RPM_ROOT/RPMS/${{ matrix.rpm_arch }}/StockD-1.2.0-1.${{ matrix.rpm_arch }}.rpm StockD-${{ matrix.id }}-1.2.0.rpm
-          
           rm -rf $RPM_ROOT
 
       # ==========================================
