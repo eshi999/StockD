@@ -13,6 +13,9 @@
 migrate_working_dir/
 binaries/
 ML/historical/
+Linux/
+Windows/
+MacOS/
 # PyInstaller build artifacts
 ML/build/
 ML/dist/
