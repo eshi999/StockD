@@ -33,13 +33,10 @@ jobs:
           mac = "${{ inputs.build_macos }}" == "true"
           lin = "${{ inputs.build_linux }}" == "true"
           matrix = []
-          # Windows
           if win: matrix.append({"id": "windows-x64", "os": "self-hosted", "platform": "windows", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow==2.19.1"})
-          # MacOS
           if mac: 
               matrix.append({"id": "mac-arm64", "os": "macos-15", "platform": "macos", "arch": "arm64", "jobs": 4, "tf_pkg": "tensorflow-macos==2.19.1 tensorflow-metal==2.19.1"})
               matrix.append({"id": "mac-intel", "os": "macos-15", "platform": "macos", "arch": "x64", "jobs": 4, "tf_pkg": "tensorflow-macos==2.19.1"})
-          # Linux
           if lin: 
               matrix.append({"id": "linux-x64-nvidia", "os": "self-hosted", "platform": "linux", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow[and-cuda]==2.19.1"})
               matrix.append({"id": "linux-x64-intel", "os": "self-hosted", "platform": "linux", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow-intel==2.19.1"})
@@ -59,46 +56,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build backend (Nuitka)
-        shell: ${{ matrix.platform == 'windows' && 'pwsh' || 'bash' }}
+      - name: Build backend (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
         run: |
-          if ("${{ matrix.platform }}" -eq "windows") {
-            pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
-            $TF_PATH = python -c "import tensorflow as tf; print(tf.sysconfig.get_lib())"
-            python -m nuitka ML/main.py --standalone --assume-yes-for-downloads --output-dir=dist --jobs=${{ matrix.jobs }} --include-directory="$TF_PATH" --plugin-enable=anti-bloat --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
-            New-Item -ItemType Directory -Path "backend" -Force
-            Copy-Item -Recurse -Path "dist/main.dist/*" -Destination "backend/"
-            if (Test-Path "backend/main.exe") { Rename-Item "backend/main.exe" "sage_backend.exe" }
-          } else {
-            pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
-            TF_PATH=$(python -c "import tensorflow as tf; print(tf.sysconfig.get_lib())")
-            cd ML && python -m nuitka main.py --standalone --assume-yes-for-downloads --output-dir=dist --jobs=${{ matrix.jobs }} --include-directory="$TF_PATH" --plugin-enable=anti-bloat --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
-            mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
-            mv ../backend/main ../backend/sage_backend || true
-          }
+          pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
+          $TF_PATH = python -c "import tensorflow as tf; print(tf.sysconfig.get_lib())"
+          python -m nuitka ML/main.py --standalone --assume-yes-for-downloads --output-dir=dist --jobs=${{ matrix.jobs }} --include-directory="$TF_PATH" --plugin-enable=anti-bloat --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
+          New-Item -ItemType Directory -Path "backend" -Force
+          Copy-Item -Recurse -Path "dist/main.dist/*" -Destination "backend/"
+          if (Test-Path "backend/main.exe") { Rename-Item "backend/main.exe" "sage_backend.exe" }
+
+      - name: Build backend (Linux/Mac)
+        if: matrix.platform != 'windows'
+        shell: bash
+        run: |
+          pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
+          TF_PATH=$(python -c "import tensorflow as tf; print(tf.sysconfig.get_lib())")
+          cd ML && python -m nuitka main.py --standalone --assume-yes-for-downloads --output-dir=dist --jobs=${{ matrix.jobs }} --include-directory="$TF_PATH" --plugin-enable=anti-bloat --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
+          mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
+          mv ../backend/main ../backend/sage_backend || true
 
       - name: Flutter build
-        shell: ${{ matrix.platform == 'windows' && 'pwsh' || 'bash' }}
+        shell: bash
         run: |
-          if ("${{ matrix.platform }}" -eq "windows") { flutter build windows --release }
-          elseif ("${{ matrix.platform }}" -eq "macos") { flutter build macos --release }
-          else { flutter build linux --release }
+          if [ "${{ matrix.platform }}" == "windows" ]; then flutter build windows --release
+          elif [ "${{ matrix.platform }}" == "macos" ]; then flutter build macos --release
+          else flutter build linux --release; fi
 
       - name: Inject backend
-        shell: ${{ matrix.platform == 'windows' && 'pwsh' || 'bash' }}
+        shell: bash
         run: |
-          if ("${{ matrix.platform }}" -eq "windows") {
-            $DEST="build/windows/x64/runner/Release/data/flutter_assets/backend_bundle"
-            New-Item -Path "$DEST" -ItemType Directory -Force
-            Copy-Item -Recurse -Path "backend/*" -Destination "$DEST"
-          } else {
-            if ("${{ matrix.platform }}" -eq "macos") {
-                DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
-            } else {
-                DEST="build/linux/x64/release/bundle/data/flutter_assets/backend_bundle"
-            }
+          if [ "${{ matrix.platform }}" == "windows" ]; then
+            DEST="build/windows/x64/runner/Release/data/flutter_assets/backend_bundle"
             mkdir -p "$DEST" && cp -r backend/* "$DEST"
-          }
+          elif [ "${{ matrix.platform }}" == "macos" ]; then
+            DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+            mkdir -p "$DEST" && cp -r backend/* "$DEST"
+          else
+            DEST="build/linux/x64/release/bundle/data/flutter_assets/backend_bundle"
+            mkdir -p "$DEST" && cp -r backend/* "$DEST"
+          fi
 
       - name: Linux Packaging
         if: matrix.platform == 'linux'
