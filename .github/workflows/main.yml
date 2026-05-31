@@ -1,10 +1,6 @@
 name: StockD Multi-Platform Build Pipeline
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   
   # ==========================================
   # INTERACTIVE MANUAL TRIGGER MENU
