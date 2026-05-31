@@ -7,25 +7,27 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with: {channel: 'stable'}
       
       - name: Build and Package
+        shell: powershell
         run: |
+          # 1. Install Dependencies
           pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy
           
-          # 1. Build Backend
+          # 2. Build Backend (Hardened for stability)
+          # --jobs=1: Prevents heap exhaustion errors (C1060)
+          # --msvc=latest: Forces use of the newest compiler toolchain
           python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=1 --low-memory --msvc=latest --disable-ccache
           
-          # 2. Build Frontend
+          # 3. Build Frontend (Using your manual flutter setup)
           flutter build windows --release
           
-          # 3. Inject Backend
+          # 4. Inject Backend into Flutter bundle
           $DEST = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
-          if (!(Test-Path $DEST)) { New-Item -ItemType Directory -Path $DEST }
+          if (!(Test-Path -Path $DEST)) { New-Item -ItemType Directory -Path $DEST }
           Copy-Item -Path "dist\main.dist\*" -Destination $DEST -Recurse -Force
           
-          # 4. Generate NSIS Script Dynamically
+          # 5. Generate NSIS Script Dynamically via PowerShell
           $nsisScript = @"
           !include "MUI2.nsh"
           Name "StockD"
@@ -42,7 +44,7 @@ jobs:
           "@
           $nsisScript | Out-File -FilePath "installer.nsi" -Encoding ascii
           
-          # 5. Compile NSIS Installer
+          # 6. Compile NSIS Installer
           & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
 
       - name: Release Asset
