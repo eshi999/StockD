@@ -1,6 +1,10 @@
 name: StockD Multi-Platform Build Pipeline
 
 on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   
   # ==========================================
   # INTERACTIVE MANUAL TRIGGER MENU
@@ -21,7 +25,7 @@ on:
         default: true
 
 # ==========================================
-# SILENCE NODE.JS 20 DEPRECATION WARNINGS
+# SILENCE NODE.JS DEPRECATION WARNINGS
 # ==========================================
 env:
   FORCE_JUST_ACTIONS_TO_NODE24: true
@@ -32,7 +36,7 @@ permissions:
 
 jobs:
   # ==========================================
-  # THE DYNAMIC MATRIX GENERATOR (The Kill-Switch)
+  # THE DYNAMIC MATRIX GENERATOR
   # ==========================================
   setup-matrix:
     name: Configure OS Targets
@@ -55,7 +59,7 @@ jobs:
           matrix = []
           
           if win:
-              matrix.append({"id": "windows-x64", "os": "windows-latest", "platform": "windows", "arch": "x64", "pkgs": "tensorflow", "python_ver": "3.12"})
+              matrix.append({"id": "windows-x64", "os": "windows-latest", "platform": "windows", "arch": "x64", "pkgs": "tensorflow==2.10.1", "python_ver": "3.10"})
           
           if mac:
               matrix.append({"id": "mac-arm", "os": "macos-15", "platform": "macos", "arch": "arm64", "pkgs": "tensorflow tensorflow-metal", "python_ver": "3.12", "mac_pkg": "3.12.3"})
@@ -127,7 +131,7 @@ jobs:
           $HOME/flutter/bin/flutter precache
 
       # ==========================================
-      # SAGE BACKEND COMPILATION (Protobuf Fix Included)
+      # SAGE BACKEND COMPILATION
       # ==========================================
       - name: Compile PyInstaller (Unix)
         if: runner.os != 'Windows'
@@ -140,7 +144,7 @@ jobs:
             PY_CMD="python"
           fi
           
-          $PY_CMD -m pip install pyinstaller delocate ${{ matrix.pkgs }} "numpy" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
+          $PY_CMD -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           
           cd ML
           $PY_CMD -m PyInstaller --name sage_backend --onedir --noconsole --clean \
@@ -156,7 +160,6 @@ jobs:
             --collect-submodules ssl \
             --exclude-module tensorboard --exclude-module tensorflow_estimator \
             main.py
-            
             
           mkdir -p ../backend
           cp -r dist/sage_backend/* ../backend/
@@ -193,7 +196,7 @@ jobs:
           flutter config --enable-windows-desktop
           flutter build windows --release
 
-     - name: Inject SAGE Backend & Pack (Windows)
+      - name: Inject SAGE Backend & Pack (Windows)
         if: matrix.platform == 'windows'
         shell: powershell
         run: |
@@ -204,10 +207,9 @@ jobs:
 
           choco install nsis -y --no-progress
           
-          # 1. Generate the perfect NSIS-compliant icon
+          # Use ImageMagick to create the perfect uncompressed ICO file natively
           magick "assets\images\StockD.png" -define icon:auto-resize=256,128,64,48,32,16 "nsis_icon.ico"
           
-          # 2. Write the NSIS Script directly without PowerShell variables
           @"
           !include "MUI2.nsh"
           
@@ -215,7 +217,7 @@ jobs:
           OutFile "StockD-${{ matrix.id }}-setup.exe"
           InstallDir "`$PROGRAMFILES64\StockD"
           
-          # Hardcode the relative path - NSIS will look right next to this script!
+          # Hardcode the relative path to bypass PowerShell variable evaluation bugs
           !define MUI_ICON "nsis_icon.ico"
           !define MUI_UNICON "nsis_icon.ico"
           
@@ -251,7 +253,7 @@ jobs:
           cp -r backend/* "$DEST/"
           rm -rf backend
           
-          # 1. GENERATE THE .ICNS FILE NATIVELY
+          # GENERATE THE .ICNS FILE NATIVELY
           echo "Generating macOS .icns file from assets/images/StockD.png..."
           mkdir StockD.iconset
           sips -z 16 16     assets/images/StockD.png --out StockD.iconset/icon_16x16.png
@@ -267,7 +269,7 @@ jobs:
           iconutil -c icns StockD.iconset
           rm -R StockD.iconset
 
-          # 2. CREATE THE BRANDED DMG
+          # CREATE THE BRANDED DMG
           echo "Installing create-dmg..."
           brew install create-dmg
           
@@ -398,14 +400,12 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
-            # Windows: 7-Zip Multi-part Volume Archive (.7z.001, .7z.002, ...)
             find . -maxdepth 1 -type f -size +1900M -name "*.exe" | while read file; do
               echo "Compressing and splitting $file with 7-Zip..."
               7z a -v1900m "${file}.7z" "$file"
               rm "$file"
             done
           else
-            # Unix (macOS/Linux): Native Coreutils Stream Splitting (.part_aa, .part_ab, ...)
             find . -maxdepth 1 -type f -size +1900M \( -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" \) | while read file; do
               echo "Splitting large file natively: $file"
               split -b 1900M "$file" "${file}.part_"
