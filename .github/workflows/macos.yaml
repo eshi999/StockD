@@ -4,6 +4,7 @@ permissions: {contents: write}
 env:
   MACOSX_DEPLOYMENT_TARGET: "11.0"
   PYTHON_VERSION: "3.12.10"
+  PYTHON_BIN_PATH: "/Library/Frameworks/Python.framework/Versions/3.12/bin"
 
 jobs:
   build-arm64:
@@ -16,7 +17,8 @@ jobs:
         run: |
           curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
           sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
-          pip3 install nuitka zstandard ordered-set tensorflow-macos tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
+          export PATH="${PYTHON_BIN_PATH}:${PATH}"
+          pip3 install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
           cd ML && python3 -m nuitka main.py --standalone --output-dir=../dist_arm64 --include-package=tensorflow --jobs=8 --low-memory
           chmod +x ../dist_arm64/main.dist/main
           flutter build macos --release
@@ -41,6 +43,7 @@ jobs:
         run: |
           curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
           sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
+          export PATH="${PYTHON_BIN_PATH}:${PATH}"
           pip3 install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
           cd ML && python3 -m nuitka main.py --standalone --output-dir=../dist_intel --include-package=tensorflow --jobs=8 --low-memory
           chmod +x ../dist_intel/main.dist/main
