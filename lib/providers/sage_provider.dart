@@ -31,6 +31,12 @@ class BackendNotifier extends Notifier<BackendStatus> {
     }
 
     try {
+      // ----------------------------------------------------------------------
+      // INJECTED FIX: Bypass strict C++ Protobuf registries on macOS/Intel
+      // ----------------------------------------------------------------------
+      final Map<String, String> secureEnv = Map<String, String>.from(Platform.environment);
+      secureEnv["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python";
+
       if (kReleaseMode) {
         final String backendPath = _resolveBackendPath();
         debugPrint('SAGE: launching backend at $backendPath');
@@ -46,7 +52,7 @@ class BackendNotifier extends Notifier<BackendStatus> {
           [],
           workingDirectory: p.dirname(backendPath),
           mode: ProcessStartMode.normal,
-          environment: Platform.environment,
+          environment: secureEnv, // <-- Applied to Release
         );
 
         // Pipe stderr so crash logs surface the real error
@@ -61,6 +67,7 @@ class BackendNotifier extends Notifier<BackendStatus> {
           ['-m', 'uvicorn', 'main:app', '--port', '8000'],
           workingDirectory: _mlDir(),
           mode: ProcessStartMode.normal,
+          environment: secureEnv, // <-- Applied to Development
         );
       }
 
@@ -97,6 +104,7 @@ class BackendNotifier extends Notifier<BackendStatus> {
       //     data/flutter_assets/backend_bundle/
       //       sage_backend/sage_backend   ← nested (correct)
       //       sage_backend                ← flat (old builds)
+      // final String realExe =
       final String realExe =
           File(Platform.resolvedExecutable).resolveSymbolicLinksSync();
       final String bundleDir = p.join(
