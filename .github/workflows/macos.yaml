@@ -12,7 +12,7 @@ jobs:
       matrix:
         include:
           - { name: "Apple Silicon", runner: macos-15, arch: arm64, tf_pkg: "tensorflow-macos tensorflow-metal" }
-          - { name: "Intel", runner: macos-13, arch: x64, tf_pkg: "tensorflow" }
+          - { name: "Intel", runner: macos-15-intel, arch: x64, tf_pkg: "tensorflow" }
     steps:
       - uses: actions/checkout@v4
       
