@@ -211,19 +211,29 @@ jobs:
           Remove-Item -Recurse -Force -Path "backend"
 
           choco install nsis -y --no-progress
+          
+          # Grab absolute path
           $cwd = (Get-Location).Path
           $iconPath = "$cwd\windows\runner\resources\app_icon.ico"
           
           @"
+          # Load the Modern UI 2 Module
+          !include "MUI2.nsh"
+          
           Name "StockD"
           OutFile "StockD-${{ matrix.id }}-setup.exe"
           InstallDir "`$PROGRAMFILES64\StockD"
           
-          # Grab the absolute working directory to prevent path resolution errors
-          Icon "$iconPath"
-          UninstallIcon "$iconPath"
+          # Force the icon injection via MUI directives
+          !define MUI_ICON "$iconPath"
+          !define MUI_UNICON "$iconPath"
+          
+          # Setup the sleek Modern UI pages
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "English"
 
-          Section
+          Section "Install"
             SetOutPath "`$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
             CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe"
