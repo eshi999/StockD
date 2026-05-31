@@ -21,7 +21,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  // Define default window dimensions
   double targetWidth = 1280;
   double targetHeight = 720;
 
@@ -76,7 +75,6 @@ class _StockDAppState extends ConsumerState<StockDApp> with WindowListener {
 
   @override
   void onWindowClose() async {
-    // Gracefully terminate the backend process before closing the window
     ref.read(backendProvider.notifier).stopBackend();
     await windowManager.destroy();
   }
@@ -91,11 +89,13 @@ class _StockDAppState extends ConsumerState<StockDApp> with WindowListener {
       theme: StockDTheme.theme,
       routerConfig: _router,
       builder: (context, child) {
-        if (backendStatus == BackendStatus.starting) {
+        // Show splash if still starting.
+        // Once online or skipped (offline), child is rendered.
+        if (backendStatus == BackendStatus.starting || backendStatus == BackendStatus.offline) {
           return Stack(
             children: [
               if (child != null) child,
-              const _BackendSplash(),
+              if (backendStatus != BackendStatus.offline) const _BackendSplash(),
             ],
           );
         }
@@ -108,55 +108,22 @@ class _StockDAppState extends ConsumerState<StockDApp> with WindowListener {
 final GoRouter _router = GoRouter(
   initialLocation: '/',
   routes: [
-    GoRoute(
-      path: '/',
-      builder: (context, state) => const OverworldScreen(),
-    ),
+    GoRoute(path: '/', builder: (context, state) => const OverworldScreen()),
     ShellRoute(
       builder: (context, state, child) => AppShell(child: child),
       routes: [
-        GoRoute(
-          path: '/dashboard',
-          builder: (context, state) => const HomeScreen(),
-        ),
+        GoRoute(path: '/dashboard', builder: (context, state) => const HomeScreen()),
         GoRoute(
           path: '/world/:worldIndex',
           builder: (context, state) {
-            final i =
-                int.tryParse(state.pathParameters['worldIndex'] ?? '0') ?? 0;
+            final i = int.tryParse(state.pathParameters['worldIndex'] ?? '0') ?? 0;
             return WorldScreen(worldIndex: i);
           },
         ),
-        GoRoute(
-          path: '/chat',
-          builder: (context, state) => const ChatScreen(),
-        ),
-        GoRoute(
-          path: '/sage',
-          builder: (context, state) => const SageScreen(),
-        ),
-        GoRoute(
-          path: '/settings',
-          builder: (context, state) => const SettingsPlaceholder(),
-        ),
+        GoRoute(path: '/chat', builder: (context, state) => const ChatScreen()),
+        GoRoute(path: '/sage', builder: (context, state) => const SageScreen()),
+        GoRoute(path: '/settings', builder: (context, state) => const SettingsPlaceholder()),
       ],
-    ),
-    GoRoute(
-      path: '/lesson/:worldIndex/:levelIndex',
-      builder: (context, state) {
-        final w = int.tryParse(state.pathParameters['worldIndex'] ?? '0') ?? 0;
-        final l = int.tryParse(state.pathParameters['levelIndex'] ?? '0') ?? 0;
-        return LessonScreen(worldIndex: w, levelIndex: l);
-      },
-    ),
-    GoRoute(
-      path: '/result/:worldIndex/:levelIndex',
-      builder: (context, state) {
-        final w = int.tryParse(state.pathParameters['worldIndex'] ?? '0') ?? 0;
-        final l = int.tryParse(state.pathParameters['levelIndex'] ?? '0') ?? 0;
-        final score = state.extra as int? ?? 0;
-        return ResultScreen(worldIndex: w, levelIndex: l, score: score);
-      },
     ),
   ],
 );
@@ -180,49 +147,69 @@ class AppShell extends StatelessWidget {
   }
 }
 
-class _BackendSplash extends ConsumerWidget {
+// ── Backend Splash with Retry/Skip ────────────────────────────────────────────
+class _BackendSplash extends ConsumerStatefulWidget {
   const _BackendSplash();
+  @override
+  ConsumerState<_BackendSplash> createState() => _BackendSplashState();
+}
+
+class _BackendSplashState extends ConsumerState<_BackendSplash> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseCtrl;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = ref.watch(backendProvider);
+
     return Container(
       color: StockDTheme.bg,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: StockDTheme.gradient,
+            AnimatedBuilder(
+              animation: _pulseCtrl,
+              builder: (_, child) => Container(
+                width: 72, height: 72,
+                decoration: BoxDecoration(shape: BoxShape.circle, gradient: StockDTheme.gradient),
+                child: child,
               ),
-              child: const Center(
-                child: Text('S',
-                    style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white)),
-              ),
+              child: const Center(child: Text('S', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: Colors.white))),
             ),
             const SizedBox(height: 24),
-            Text('StockD',
-                style: StockDTheme.displayLarge.copyWith(fontSize: 32)),
+            Text('StockD', style: StockDTheme.displayLarge.copyWith(fontSize: 32)),
+            const SizedBox(height: 10),
+            Text(status == BackendStatus.offline ? 'SAGE FAILED TO LOAD' : 'INITIALIZING SAGE',
+                style: StockDTheme.labelSmall.copyWith(color: StockDTheme.sage, letterSpacing: 3)),
             const SizedBox(height: 32),
-            const SizedBox(
-              width: 200,
-              child: LinearProgressIndicator(
-                backgroundColor: StockDTheme.border,
-                valueColor: AlwaysStoppedAnimation(StockDTheme.sage),
+            
+            // Logic to switch between loading and Retry/Skip
+            if (status == BackendStatus.offline)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton(onPressed: () => ref.read(backendProvider.notifier).retry(), child: const Text("Retry")),
+                  const SizedBox(width: 12),
+                  OutlinedButton(onPressed: () => ref.read(backendProvider.notifier).skipToOffline(), child: const Text("Skip")),
+                ],
+              )
+            else
+              const SizedBox(
+                width: 220,
+                child: LinearProgressIndicator(minHeight: 3, valueColor: AlwaysStoppedAnimation(StockDTheme.sage)),
               ),
-            ),
-            const SizedBox(height: 32),
-            GestureDetector(
-              onTap: () => ref.read(backendProvider.notifier).skipToOffline(),
-              child: const Text('Skip (run without SAGE)',
-                  style: TextStyle(decoration: TextDecoration.underline)),
-            ),
           ],
         ),
       ),

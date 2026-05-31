@@ -5,7 +5,6 @@ import 'package:path/path.dart' as p;
 import '../models/models.dart';
 import '../services/sage_service.dart';
 
-// ── Backend Status ────────────────────────────────────────────────────────────
 enum BackendStatus { starting, online, offline }
 
 class BackendNotifier extends Notifier<BackendStatus> {
@@ -24,7 +23,6 @@ class BackendNotifier extends Notifier<BackendStatus> {
   }
 
   Future<void> _startBackend() async {
-    // 1. Quick check if already online
     if (await ref.read(sageServiceProvider).isBackendAlive()) {
       state = BackendStatus.online;
       return;
@@ -32,28 +30,26 @@ class BackendNotifier extends Notifier<BackendStatus> {
 
     try {
       if (kReleaseMode) {
-        // PRODUCTION: Use the executable's directory as the anchor
-        final String exeDir = p.dirname(Platform.resolvedExecutable);
+        final String realExecutable = await File(Platform.resolvedExecutable).resolveSymbolicLinks();
+        final String exeDir = p.dirname(realExecutable);
 
-        // Path matches the CI/CD injection location:
-        // flutter_assets/backend_bundle/sage_backend/sage_backend(.exe)
         final String backendPath = p.join(
             exeDir,
             'data',
             'flutter_assets',
             'backend_bundle',
-            'sage_backend',
             Platform.isWindows ? 'sage_backend.exe' : 'sage_backend');
+
+        debugPrint("Launching backend at: $backendPath");
 
         _process = await Process.start(
           backendPath,
           [],
-          workingDirectory:
-              p.dirname(backendPath), // Essential for finding Python libs
-          mode: ProcessStartMode.normal,
+          workingDirectory: p.dirname(backendPath),
+          mode: ProcessStartMode.detached,
+          environment: Platform.environment, // Critical for GPU/Library access
         );
       } else {
-        // DEVELOPMENT: Run via local Python shell
         _process = await Process.start(
           'python',
           ['-m', 'uvicorn', 'main:app', '--port', '8000'],
@@ -62,7 +58,6 @@ class BackendNotifier extends Notifier<BackendStatus> {
         );
       }
 
-      // 2. Poll for readiness
       for (int i = 0; i < 20; i++) {
         await Future.delayed(const Duration(seconds: 1));
         if (await ref.read(sageServiceProvider).isBackendAlive()) {
@@ -77,12 +72,15 @@ class BackendNotifier extends Notifier<BackendStatus> {
     }
   }
 
-  Future<void> retry() async {
+  void retry() {
     state = BackendStatus.starting;
-    await _startBackend();
+    _startBackend();
   }
 
-  void skipToOffline() => state = BackendStatus.offline;
+  void skipToOffline() {
+    stopBackend(); // Clean up the port
+    state = BackendStatus.offline;
+  }
 
   String _mlDir() {
     final exe = Platform.resolvedExecutable;
@@ -103,26 +101,16 @@ final backendProvider = NotifierProvider<BackendNotifier, BackendStatus>(
   BackendNotifier.new,
 );
 
-// ── SAGE Explanation ──────────────────────────────────────────────────────────
 class SageNotifier extends Notifier<SageExplanation?> {
   @override
   SageExplanation? build() => null;
 
-  Future<void> explain({
-    required StockQuestion question,
-    required int userAnswerIndex,
-  }) async {
+  Future<void> explain({required StockQuestion question, required int userAnswerIndex}) async {
     state = SageExplanation.loading(question.id);
-    final result = await ref.read(sageServiceProvider).explainQuestion(
-          question: question,
-          userAnswerIndex: userAnswerIndex,
-        );
+    final result = await ref.read(sageServiceProvider).explainQuestion(question: question, userAnswerIndex: userAnswerIndex);
     state = result;
   }
-
   void clear() => state = null;
 }
 
-final sageProvider = NotifierProvider<SageNotifier, SageExplanation?>(
-  SageNotifier.new,
-);
+final sageProvider = NotifierProvider<SageNotifier, SageExplanation?>(SageNotifier.new);

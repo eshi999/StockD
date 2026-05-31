@@ -28,6 +28,7 @@ on:
 # SILENCE NODE.JS 20 DEPRECATION WARNINGS
 # ==========================================
 env:
+  FORCE_JUST_ACTIONS_TO_NODE24: true
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
@@ -58,7 +59,7 @@ jobs:
           matrix = []
           
           if win:
-              matrix.append({"id": "windows-x64", "os": "windows-latest", "platform": "windows", "arch": "x64", "pkgs": "tensorflow==2.10.1", "python_ver": "3.10"})
+              matrix.append({"id": "windows-x64", "os": "windows-latest", "platform": "windows", "arch": "x64", "pkgs": "tensorflow", "python_ver": "3.12"})
           
           if mac:
               matrix.append({"id": "mac-arm", "os": "macos-15", "platform": "macos", "arch": "arm64", "pkgs": "tensorflow tensorflow-metal", "python_ver": "3.12", "mac_pkg": "3.12.3"})
@@ -143,13 +144,27 @@ jobs:
             PY_CMD="python"
           fi
           
-          $PY_CMD -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
+          $PY_CMD -m pip install pyinstaller delocate ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           
           cd ML
-          $PY_CMD -m PyInstaller --name sage_backend --onedir --noconsole --clean --strip \
+          $PY_CMD -m PyInstaller --name sage_backend --onedir --noconsole --clean \
             --add-data "artifacts:artifacts" \
+            --collect-all ssl \
+            --collect-all certifi \
+            --collect-all pandas \
+            --collect-all pyarrow \
+            --collect-all scipy \
+            --hidden-import "ssl" \
+            --hidden-import "certifi" \
+            --runtime-tmpdir=. \
+            --collect-submodules ssl \
             --exclude-module tensorboard --exclude-module tensorflow_estimator \
             main.py
+            
+          if [ "$RUNNER_OS" == "macOS" ]; then
+             delocate-listdeps dist/sage_backend/sage_backend
+             delocate-wheel -w . dist/sage_backend/sage_backend
+          fi
             
           mkdir -p ../backend
           cp -r dist/sage_backend/* ../backend/
@@ -157,17 +172,24 @@ jobs:
 
       - name: Compile PyInstaller (Windows)
         if: runner.os == 'Windows'
-        shell: powershell
+        shell: bash
         run: |
           python -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           cd ML
-          python -m PyInstaller --name sage_backend --onedir --noconsole --clean --strip `
-            --add-data "artifacts;artifacts" `
-            --exclude-module tensorboard --exclude-module tensorflow_estimator `
+          python -m PyInstaller --name sage_backend --onedir --noconsole --clean \
+            --add-data "artifacts;artifacts" \
+            --collect-all ssl \
+            --collect-all certifi \
+            --collect-all pandas \
+            --collect-all pyarrow \
+            --collect-all scipy \
+            --hidden-import "ssl" \
+            --hidden-import "certifi" \
+            --exclude-module tensorboard --exclude-module tensorflow_estimator \
             main.py
-          New-Item -ItemType Directory -Force -Path "../backend"
-          Copy-Item -Path "dist/sage_backend/*" -Destination "../backend" -Recurse
-          Remove-Item -Recurse -Force -Path "build", "dist"
+          mkdir -p ../backend
+          cp -r dist/sage_backend/* ../backend/
+          rm -rf build dist
 
       # ==========================================
       # WINDOWS PIPELINE STAGES
@@ -217,20 +239,51 @@ jobs:
           flutter build macos --release
           find build/macos/Build/Products/Release/StockD.app -name "*.dSYM" -exec rm -rf {} +
 
-      - name: Inject SAGE Backend & Pack (macOS)
+      - name: Inject SAGE Backend & Auto-Generate ICNS (macOS)
         if: matrix.platform == 'macos'
+        shell: bash
         run: |
           DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$DEST"
           cp -r backend/* "$DEST/"
           rm -rf backend
           
+          # 1. GENERATE THE .ICNS FILE NATIVELY
+          echo "Generating macOS .icns file from assets/images/StockD.png..."
+          mkdir StockD.iconset
+          sips -z 16 16     assets/images/StockD.png --out StockD.iconset/icon_16x16.png
+          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_16x16@2x.png
+          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_32x32.png
+          sips -z 64 64     assets/images/StockD.png --out StockD.iconset/icon_32x32@2x.png
+          sips -z 128 128   assets/images/StockD.png --out StockD.iconset/icon_128x128.png
+          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_128x128@2x.png
+          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_256x256.png
+          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_256x256@2x.png
+          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_512x512.png
+          sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
+          iconutil -c icns StockD.iconset
+          rm -R StockD.iconset
+
+          # 2. CREATE THE BRANDED DMG
+          echo "Installing create-dmg..."
+          brew install create-dmg
+          
           rm -f StockD-${{ matrix.id }}.dmg
-          
           sync
-          sleep 10
+          sleep 5
           
-          hdiutil create -volname "StockD-${{ matrix.id }}" -srcfolder build/macos/Build/Products/Release/StockD.app -ov -format UDRW StockD-${{ matrix.id }}.dmg
+          echo "Packaging application into DMG..."
+          create-dmg \
+            --volname "StockD-${{ matrix.id }}" \
+            --volicon "StockD.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "StockD.app" 175 120 \
+            --hide-extension "StockD.app" \
+            --app-drop-link 425 120 \
+            "StockD-${{ matrix.id }}.dmg" \
+            "build/macos/Build/Products/Release/StockD.app" || true
 
       # ==========================================
       # LINUX PIPELINE STAGES
@@ -336,16 +389,26 @@ jobs:
           rm -rf $RPM_ROOT
 
       # ==========================================
-      # SPLIT MASSIVE FILES
+      # HYBRID SPLIT & COMPRESSION STAGE
       # ==========================================
       - name: Split Large Binaries
         shell: bash
         run: |
-          find . -maxdepth 1 -type f -size +1900M | while read file; do
-            echo "Splitting large file: $file"
-            split -b 1900M "$file" "${file}.part_"
-            rm "$file"
-          done
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            # Windows: 7-Zip Multi-part Volume Archive (.7z.001, .7z.002, ...)
+            find . -maxdepth 1 -type f -size +1900M -name "*.exe" | while read file; do
+              echo "Compressing and splitting $file with 7-Zip..."
+              7z a -v1900m "${file}.7z" "$file"
+              rm "$file"
+            done
+          else
+            # Unix (macOS/Linux): Native Coreutils Stream Splitting (.part_aa, .part_ab, ...)
+            find . -maxdepth 1 -type f -size +1900M \( -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" \) | while read file; do
+              echo "Splitting large file natively: $file"
+              split -b 1900M "$file" "${file}.part_"
+              rm "$file"
+            done
+          fi
 
       # ==========================================
       # DIRECT RELEASE UPLOAD
@@ -364,3 +427,4 @@ jobs:
             *.deb
             *.rpm
             *.part_*
+            *.7z.*
