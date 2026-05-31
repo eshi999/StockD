@@ -2,6 +2,11 @@ name: Windows Build
 on: [workflow_dispatch]
 permissions: {contents: write}
 
+# Force Git Bash for all steps
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     runs-on: self-hosted
@@ -9,41 +14,32 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with: {channel: 'stable'}
+
       - name: Build and Package
-        shell: powershell
         run: |
+          # Use the path to python (adjust if necessary for your local install)
           python -m pip install --upgrade pip
           pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy
+          
+          # Nuitka build
           python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=0
+          
+          # Flutter Build
           flutter build windows --release
-          $DEST = "build/windows/x64/runner/Release/data/flutter_assets/backend_bundle"
-          if (!(Test-Path $DEST)) { New-Item -Path $DEST -ItemType Directory -Force }
-          Copy-Item -Recurse -Path "dist/main.dist/*" -Destination $DEST
-          $nsisScript = @"
-          !include "MUI2.nsh"
-          Name "StockD"
-          OutFile "StockD-Installer.exe"
-          InstallDir "`$PROGRAMFILES\StockD"
-          !insertmacro MUI_PAGE_DIRECTORY
-          !insertmacro MUI_PAGE_INSTFILES
-          !insertmacro MUI_LANGUAGE "English"
-          Section
-            SetOutPath "`$INSTDIR"
-            File /r "build\windows\x64\runner\Release\*"
-            WriteUninstaller "`$INSTDIR\uninstall.exe"
-          SectionEnd
-          "@
-          $nsisScript | Out-File -FilePath "installer.nsi" -Encoding ascii
-          & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
-          $file = Get-Item "StockD-Installer.exe"
-          if ($file.Length -gt 1990000000) {
-            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
-            $chunkSize = 1900MB
-            for ($i = 0; $i -lt [Math]::Ceiling($bytes.Length / $chunkSize); $i++) {
-              $chunk = $bytes[$i*$chunkSize..(([Math]::Min(($i+1)*$chunkSize, $bytes.Length) - 1))]
-              [System.IO.File]::WriteAllBytes("StockD-Installer.exe.part_$i", $chunk)
-            }
-          }
+          
+          # Inject Backend
+          DEST="build/windows/x64/runner/Release/data/flutter_assets/backend_bundle"
+          mkdir -p "$DEST"
+          cp -r dist/main.dist/* "$DEST"
+          
+          # NSIS Packaging (Uses Git Bash compatible syntax for calling exe)
+          "/c/Program Files (x86)/NSIS/makensis.exe" /DVERSION=1.0.0 installer.nsi
+          
+          # Splitting logic
+          if [ $(stat -c%s "StockD-Installer.exe") -gt 1990000000 ]; then
+            split -b 1900m "StockD-Installer.exe" "StockD-Installer.exe.part_"
+          fi
+
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
