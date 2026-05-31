@@ -173,29 +173,30 @@ jobs:
           cp -r dist/sage_backend/* ../backend/
           rm -rf build dist
 
-      - name: Compile PyInstaller (Windows)
-        if: runner.os == 'Windows'
-        shell: powershell
+      - name: Compile PyInstaller
+        shell: bash
         run: |
-          python -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
+          pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           cd ML
-          pyinstaller --name sage_backend --onedir --noconsole --clean \
-              --add-data "artifacts:artifacts" \
-              --collect-all ssl \
-              --collect-all certifi \
-              --collect-all pandas \
-              --collect-all pyarrow \
-              --collect-all scipy \
-              --hidden-import "ssl" \
-              --hidden-import "certifi" \
-              --exclude-module tensorboard --exclude-module tensorflow_estimator \
-              --runtime-tmpdir=. \
-              --collect-submodules ssl
-              main.py
+          # Define path separator based on OS
+          SEP=":"
+          if [ "$RUNNER_OS" == "Windows" ]; then SEP=";"; fi
           
-          New-Item -ItemType Directory -Force -Path "../backend"
-          Copy-Item -Path "dist/sage_backend/*" -Destination "../backend" -Recurse
-          Remove-Item -Recurse -Force -Path "build", "dist"
+          # Use bash syntax (valid on Windows via git-bash)
+          python -m PyInstaller --name sage_backend --onedir --noconsole --clean \
+            --add-data "artifacts${SEP}artifacts" \
+            --collect-all ssl \
+            --collect-all certifi \
+            --collect-all pandas \
+            --collect-all pyarrow \
+            --hidden-import "ssl" \
+            --hidden-import "certifi" \
+            --exclude-module tensorboard --exclude-module tensorflow_estimator \
+            main.py
+            
+          mkdir -p ../backend
+          cp -r dist/sage_backend/* ../backend/
+          rm -rf build dist
 
       # ==========================================
       # WINDOWS PIPELINE STAGES
