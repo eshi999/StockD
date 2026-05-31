@@ -12,11 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with: {channel: 'stable'}
-      - name: Setup & Build
+      - name: Build ARM64
         run: |
           curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
           sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
-          python3 -m pip install --upgrade pip --break-system-packages
           pip3 install nuitka zstandard ordered-set tensorflow-macos tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
           cd ML && python3 -m nuitka main.py --standalone --output-dir=../dist_arm64 --include-package=tensorflow --jobs=8 --low-memory
           chmod +x ../dist_arm64/main.dist/main
@@ -26,28 +25,22 @@ jobs:
           chmod +x "$DEST/main"
           hdiutil create -volname "StockD-arm64" -srcfolder "build/macos/Build/Products/Release/StockD.app" -ov -format UDZO "StockD-arm64.dmg"
           find . -name "StockD-arm64.dmg" -size +1900M -exec split -b 1900m {} {}.part_ \;
-      - name: Cleanup & Upload
-        if: always()
-        run: |
-          rm -rf dist_arm64 build
-      - uses: softprops/action-gh-release@v2
+      - name: Release Asset
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          make_latest: true
-          overwrite_files: true
           files: StockD-arm64.dmg*
 
   build-intel:
-    runs-on: macos-15-intel
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with: {channel: 'stable'}
-      - name: Setup & Build
+      - name: Build Intel
         run: |
           curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
           sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
-          python3 -m pip install --upgrade pip --break-system-packages
           pip3 install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
           cd ML && python3 -m nuitka main.py --standalone --output-dir=../dist_intel --include-package=tensorflow --jobs=8 --low-memory
           chmod +x ../dist_intel/main.dist/main
@@ -57,13 +50,8 @@ jobs:
           chmod +x "$DEST/main"
           hdiutil create -volname "StockD-x64" -srcfolder "build/macos/Build/Products/Release/StockD.app" -ov -format UDZO "StockD-x64.dmg"
           find . -name "StockD-x64.dmg" -size +1900M -exec split -b 1900m {} {}.part_ \;
-      - name: Cleanup & Upload
-        if: always()
-        run: |
-          rm -rf dist_intel build
-      - uses: softprops/action-gh-release@v2
+      - name: Release Asset
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          make_latest: true
-          overwrite_files: true
           files: StockD-x64.dmg*
