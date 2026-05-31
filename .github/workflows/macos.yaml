@@ -1,0 +1,38 @@
+name: macOS Build
+on: [workflow_dispatch]
+permissions: {contents: write}
+env:
+  MACOSX_DEPLOYMENT_TARGET: "11.0"
+  PYTHON_VERSION: "3.12.10"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - { runner: macos-15, arch: arm64, tf_pkg: "tensorflow-macos tensorflow-metal" }
+          - { runner: macos-15-intel, arch: x64, tf_pkg: "tensorflow-macos" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Official Python 3.12.10
+        run: |
+          curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
+          sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
+          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+
+      - name: Build and Package
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
+          cd ML && python3 -m nuitka main.py --standalone --output-dir=../dist --include-package=tensorflow
+          hdiutil create -volname "StockD-${{ matrix.arch }}" -srcfolder "dist/main.dist" -ov -format UDZO "StockD-${{ matrix.arch }}.dmg"
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          make_latest: true
+          overwrite_files: true
+          files: "StockD-*.dmg"
