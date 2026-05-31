@@ -33,10 +33,10 @@ jobs:
           mac = "${{ inputs.build_macos }}" == "true"
           lin = "${{ inputs.build_linux }}" == "true"
           matrix = []
-          if win: matrix.append({"id": "windows-x64", "os": "self-hosted", "platform": "windows", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow==2.19.1"})
+          if win: matrix.append({"id": "windows-x64", "os": "self-hosted", "platform": "windows", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow"})
           if mac: 
-              matrix.append({"id": "mac-arm64", "os": "macos-15", "platform": "macos", "arch": "arm64", "jobs": 4, "tf_pkg": "tensorflow-macos==2.19.1 tensorflow-metal==2.19.1"})
-              matrix.append({"id": "mac-intel", "os": "macos-15", "platform": "macos", "arch": "x64", "jobs": 4, "tf_pkg": "tensorflow-macos==2.19.1"})
+              matrix.append({"id": "mac-arm64", "os": "macos-15", "platform": "macos", "arch": "arm64", "jobs": 4, "tf_pkg": "tensorflow-macos tensorflow-metal"})
+              matrix.append({"id": "mac-intel", "os": "macos-15", "platform": "macos", "arch": "x64", "jobs": 4, "tf_pkg": "tensorflow-macos"})
           if lin: 
               matrix.append({"id": "linux-x64-nvidia", "os": "self-hosted", "platform": "linux", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow[and-cuda]==2.19.1"})
               matrix.append({"id": "linux-x64-intel", "os": "self-hosted", "platform": "linux", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow-intel==2.19.1"})
