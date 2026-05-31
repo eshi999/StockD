@@ -19,9 +19,6 @@ permissions:
 env:
   PYTHONUNBUFFERED: 1
 
-# ==========================================
-# MATRIX BUILDER (FIXED)
-# ==========================================
 jobs:
   setup-matrix:
     runs-on: ubuntu-latest
@@ -34,70 +31,27 @@ jobs:
           import json
           import os
 
-          # Ensure inputs are boolean
           win = "${{ inputs.build_windows }}" == "true"
           mac = "${{ inputs.build_macos }}" == "true"
           lin = "${{ inputs.build_linux }}" == "true"
 
           matrix = []
-
-          # SELF-HOSTED WINDOWS
           if win:
-              matrix.append({
-                  "id": "windows-x64",
-                  "os": "self-hosted",
-                  "platform": "windows",
-                  "arch": "x64",
-                  "jobs": 14
-              })
-
-          # MACOS (GITHUB HOSTED)
+              matrix.append({"id": "windows-x64", "os": "self-hosted", "platform": "windows", "arch": "x64", "jobs": 14})
           if mac:
-              matrix.append({
-                  "id": "mac-arm64",
-                  "os": "macos-15",
-                  "platform": "macos",
-                  "arch": "arm64",
-                  "jobs": 4
-              })
-              matrix.append({
-                  "id": "mac-intel",
-                  "os": "macos-15",
-                  "platform": "macos",
-                  "arch": "x64",
-                  "jobs": 4
-              })
-
-          # SELF-HOSTED LINUX X64
+              matrix.append({"id": "mac-arm64", "os": "macos-15", "platform": "macos", "arch": "arm64", "jobs": 4})
+              matrix.append({"id": "mac-intel", "os": "macos-15", "platform": "macos", "arch": "x64", "jobs": 4})
           if lin:
-              matrix.append({
-                  "id": "linux-x64",
-                  "os": "self-hosted",
-                  "platform": "linux",
-                  "arch": "x64",
-                  "jobs": 14
-              })
-
-              # OPTIONAL CLOUD ARM64
-              matrix.append({
-                  "id": "linux-arm64",
-                  "os": "ubuntu-24.04-arm",
-                  "platform": "linux",
-                  "arch": "arm64",
-                  "jobs": 4
-              })
+              matrix.append({"id": "linux-x64", "os": "self-hosted", "platform": "linux", "arch": "x64", "jobs": 14})
+              matrix.append({"id": "linux-arm64", "os": "ubuntu-24.04-arm", "platform": "linux", "arch": "arm64", "jobs": 4})
 
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"matrix={json.dumps(matrix)}")
 
-# ==========================================
-# BUILD JOB
-# ==========================================
   build:
     needs: setup-matrix
     if: ${{ fromJSON(needs.setup-matrix.outputs.matrix)[0] != null }}
     runs-on: ${{ matrix.os }}
-
     strategy:
       fail-fast: false
       matrix:
@@ -106,29 +60,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-# ==========================================
-# PYTHON + FLUTTER
-# ==========================================
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Verify Environment
+        run: |
+          python --version
+          python -m pip install --upgrade pip
 
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
 
-# ==========================================
-# NUITKA BUILD
-# ==========================================
       - name: Build backend (Nuitka)
         shell: bash
         run: |
-          python -m pip install --upgrade pip
           pip install nuitka zstandard ordered-set
           pip install tensorflow==2.19.1 fastapi uvicorn pandas scikit-learn yfinance
 
           cd ML
-
           python -m nuitka main.py \
             --standalone \
             --assume-yes-for-downloads \
@@ -145,9 +92,6 @@ jobs:
           mv ../backend/main ../backend/sage_backend || true
           mv ../backend/main.exe ../backend/sage_backend.exe || true
 
-# ==========================================
-# FLUTTER BUILD
-# ==========================================
       - name: Flutter build
         shell: bash
         run: |
@@ -159,9 +103,6 @@ jobs:
             flutter build linux --release
           fi
 
-# ==========================================
-# BACKEND INJECTION
-# ==========================================
       - name: Inject backend
         shell: bash
         run: |
@@ -172,13 +113,9 @@ jobs:
           else
             DEST="build/linux/x64/release/bundle/data/flutter_assets/backend_bundle"
           fi
-
           mkdir -p "$DEST"
           cp -r backend/* "$DEST"
 
-# ==========================================
-# LINUX PACKAGING
-# ==========================================
       - name: Linux packaging
         if: matrix.platform == 'linux'
         shell: bash
@@ -193,11 +130,9 @@ jobs:
           Type=Application
           Categories=Finance;
           EOF
-
           mkdir -p deb/usr/lib/stockd deb/usr/bin
           cp -r "$BUNDLE"/* deb/usr/lib/stockd/
           ln -s /usr/lib/stockd/stockd deb/usr/bin/stockd || true
-
           cat > deb/DEBIAN/control << EOF
           Package: stockd
           Version: 1.0.0
@@ -205,7 +140,6 @@ jobs:
           Maintainer: StockD
           Description: StockD AI App
           EOF
-
           dpkg-deb --build deb StockD-${{ matrix.id }}-${{ github.run_number }}.deb
 
           rpmroot=$HOME/rpmbuild
@@ -222,10 +156,7 @@ jobs:
           "
           mv $rpmroot/RPMS/*/*.rpm StockD-${{ matrix.id }}-${{ github.run_number }}.rpm || true
 
-# ==========================================
-# SPLIT + UPLOAD
-# ==========================================
-      - name: Split large artifacts
+      - name: Split and Upload
         shell: bash
         run: |
           for f in *.exe *.dmg *.deb *.rpm 2>/dev/null; do
