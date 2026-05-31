@@ -7,18 +7,16 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-
       - name: Build and Package
         shell: powershell
         run: |
-          # Use pre-installed Python, upgrade pip, and install requirements
           python -m pip install --upgrade pip
-          pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance
-          
-          # Build with Nuitka (using all available logical cores on your XPS)
-          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=14
-          
-          # Create NSIS script
+          pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy
+          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=0
+          flutter build windows --release
+          $DEST = "build/windows/x64/runner/Release/data/flutter_assets/backend_bundle"
+          if (!(Test-Path $DEST)) { New-Item -Path $DEST -ItemType Directory -Force }
+          Copy-Item -Recurse -Path "dist/main.dist/*" -Destination $DEST
           $nsisScript = @"
           !include "MUI2.nsh"
           Name "StockD"
@@ -29,19 +27,14 @@ jobs:
           !insertmacro MUI_LANGUAGE "English"
           Section
             SetOutPath "`$INSTDIR"
-            File /r "dist\main.dist\*"
+            File /r "build\windows\x64\runner\Release\*"
             WriteUninstaller "`$INSTDIR\uninstall.exe"
           SectionEnd
           "@
           $nsisScript | Out-File -FilePath "installer.nsi" -Encoding ascii
-          
-          # Run NSIS
           & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
-          
-          # Splitting logic (if binary > 1.9GB)
           $file = Get-Item "StockD-Installer.exe"
           if ($file.Length -gt 1990000000) {
-            Write-Host "File too large, splitting..."
             $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
             $chunkSize = 1900MB
             for ($i = 0; $i -lt [Math]::Ceiling($bytes.Length / $chunkSize); $i++) {
@@ -49,7 +42,6 @@ jobs:
               [System.IO.File]::WriteAllBytes("StockD-Installer.exe.part_$i", $chunk)
             }
           }
-
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
