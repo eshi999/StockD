@@ -8,7 +8,7 @@ env:
 
 jobs:
   build-arm64:
-    runs-on: macos-26
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -18,21 +18,27 @@ jobs:
           curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
           sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
           export PATH="${PYTHON_BIN_PATH}:${PATH}"
-          
-          # Install ARM-specific dependencies
           pip3 install nuitka zstandard ordered-set tensorflow tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
           
-          # Build with Nuitka using surgical exclusions to fix @rpath crashes
-          cd ML && python3 -m nuitka main.py --standalone --assume-yes-for-downloads \
-            --output-dir=../dist_arm64 --jobs=4 --plugin-enable=anti-bloat \
-            --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite \
-            --include-package=tensorflow
-            
-          chmod +x ../dist_arm64/main.dist/main
+          cd ML && python3 -m nuitka main.py --standalone --assume-yes-for-downloads --output-dir=../dist_arm64 --jobs=4 --plugin-enable=anti-bloat --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite --include-package=tensorflow
+          
+          # Dynamic binary detection
+          if [ -f "../dist_arm64/main.dist/main" ]; then
+            BINARY="../dist_arm64/main.dist/main"
+          elif [ -f "../dist_arm64/main.dist/main.bin" ]; then
+            BINARY="../dist_arm64/main.dist/main.bin"
+          else
+            echo "Error: Nuitka binary not found!"
+            exit 1
+          fi
+          
+          chmod +x "$BINARY"
           flutter build macos --release
           DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$DEST" && cp -r ../dist_arm64/main.dist/* "$DEST"
-          chmod +x "$DEST/main"
+          
+          # Rename to sage_backend
+          mv "$BINARY" "$DEST/sage_backend"
           
           hdiutil create -volname "StockD-arm64" -srcfolder "build/macos/Build/Products/Release/StockD.app" -ov -format UDZO "StockD-arm64.dmg"
           find . -name "StockD-arm64.dmg" -size +1900M -exec split -b 1900m {} {}.part_ \;
@@ -43,7 +49,7 @@ jobs:
           files: StockD-arm64.dmg*
 
   build-intel:
-    runs-on: macos-26-intel
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -53,21 +59,27 @@ jobs:
           curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
           sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
           export PATH="${PYTHON_BIN_PATH}:${PATH}"
-          
-          # Install Intel-compatible dependencies
           pip3 install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
           
-          # Build with Nuitka using the same surgical exclusions
-          cd ML && python3 -m nuitka main.py --standalone --assume-yes-for-downloads \
-            --output-dir=../dist_intel --jobs=4 --plugin-enable=anti-bloat \
-            --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite \
-            --include-package=tensorflow
-            
-          chmod +x ../dist_intel/main.dist/main
+          cd ML && python3 -m nuitka main.py --standalone --assume-yes-for-downloads --output-dir=../dist_intel --jobs=4 --plugin-enable=anti-bloat --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite --include-package=tensorflow
+          
+          # Dynamic binary detection
+          if [ -f "../dist_intel/main.dist/main" ]; then
+            BINARY="../dist_intel/main.dist/main"
+          elif [ -f "../dist_intel/main.dist/main.bin" ]; then
+            BINARY="../dist_intel/main.dist/main.bin"
+          else
+            echo "Error: Nuitka binary not found!"
+            exit 1
+          fi
+          
+          chmod +x "$BINARY"
           flutter build macos --release
           DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
           mkdir -p "$DEST" && cp -r ../dist_intel/main.dist/* "$DEST"
-          chmod +x "$DEST/main"
+          
+          # Rename to sage_backend
+          mv "$BINARY" "$DEST/sage_backend"
           
           hdiutil create -volname "StockD-x64" -srcfolder "build/macos/Build/Products/Release/StockD.app" -ov -format UDZO "StockD-x64.dmg"
           find . -name "StockD-x64.dmg" -size +1900M -exec split -b 1900m {} {}.part_ \;
