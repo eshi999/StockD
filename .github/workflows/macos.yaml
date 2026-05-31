@@ -2,7 +2,7 @@ name: macOS Build
 on: [workflow_dispatch]
 permissions: {contents: write}
 env:
-  MACOSX_DEPLOYMENT_TARGET: "14.0"
+  MACOSX_DEPLOYMENT_TARGET: "11.0"
   PYTHON_VERSION: "3.12.10"
 
 jobs:
