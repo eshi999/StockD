@@ -1,10 +1,6 @@
 name: StockD Multi-Platform Build Pipeline
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   
   # ==========================================
   # INTERACTIVE MANUAL TRIGGER MENU
@@ -144,7 +140,7 @@ jobs:
             PY_CMD="python"
           fi
           
-          $PY_CMD -m pip install pyinstaller delocate ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
+          $PY_CMD -m pip install pyinstaller delocate ${{ matrix.pkgs }} "numpy" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           
           cd ML
           $PY_CMD -m PyInstaller --name sage_backend --onedir --noconsole --clean \
@@ -161,10 +157,6 @@ jobs:
             --exclude-module tensorboard --exclude-module tensorflow_estimator \
             main.py
             
-          if [ "$RUNNER_OS" == "macOS" ]; then
-             delocate-listdeps dist/sage_backend/sage_backend
-             delocate-wheel -w . dist/sage_backend/sage_backend
-          fi
             
           mkdir -p ../backend
           cp -r dist/sage_backend/* ../backend/
@@ -212,9 +204,7 @@ jobs:
 
           choco install nsis -y --no-progress
           
-          # Grab absolute path
-          $cwd = (Get-Location).Path
-          $iconPath = "$cwd\windows\runner\resources\app_icon.ico"
+          magick "assets\images\StockD.png" -define icon:auto-resize=256,128,64,48,32,16 "nsis_icon.ico"
           
           @"
           # Load the Modern UI 2 Module
