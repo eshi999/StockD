@@ -211,14 +211,17 @@ jobs:
           Remove-Item -Recurse -Force -Path "backend"
 
           choco install nsis -y --no-progress
+          $cwd = (Get-Location).Path
+          $iconPath = "$cwd\windows\runner\resources\app_icon.ico"
           
           @"
           Name "StockD"
           OutFile "StockD-${{ matrix.id }}-setup.exe"
           InstallDir "`$PROGRAMFILES64\StockD"
           
-          Icon "${__DIR__}\windows\runner\resources\app_icon.ico"
-          UninstallIcon "${__DIR__}\windows\runner\resources\app_icon.ico"
+          # Grab the absolute working directory to prevent path resolution errors
+          Icon "$iconPath"
+          UninstallIcon "$iconPath"
 
           Section
             SetOutPath "`$INSTDIR"
