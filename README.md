@@ -51,7 +51,7 @@ Everything runs directly from the application bundle.
 
 | Platform            | Architecture | Runtime                           | Acceleration                          |
 | ------------------- | ------------ | --------------------------------- | ------------------------------------- |
-| Windows x64         | x64          | TensorFlow 2.10.1                 | AVX / AVX2 CPU Vectorization          |
+| Windows x64         | x64          | TensorFlow 3.x                    | AVX / AVX2 CPU Vectorization          |
 | macOS Apple Silicon | ARM64        | TensorFlow 3.x + tensorflow-metal | Apple Metal Performance Shaders (MPS) |
 | macOS Intel         | x64          | TensorFlow 3.x                    | AVX / AVX2 CPU Instructions           |
 | Linux NVIDIA        | x64          | TensorFlow 3.x + Bundled CUDA     | Self-Contained CUDA / cuDNN Runtime   |
