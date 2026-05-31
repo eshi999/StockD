@@ -93,9 +93,9 @@ jobs:
             Copy-Item -Recurse -Path "backend/*" -Destination "$DEST"
           } else {
             if ("${{ matrix.platform }}" -eq "macos") {
-                $DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+                DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
             } else {
-                $DEST="build/linux/x64/release/bundle/data/flutter_assets/backend_bundle"
+                DEST="build/linux/x64/release/bundle/data/flutter_assets/backend_bundle"
             }
             mkdir -p "$DEST" && cp -r backend/* "$DEST"
           }
@@ -142,14 +142,12 @@ jobs:
       - name: MacOS Packaging
         if: matrix.platform == 'macos'
         shell: bash
-        run: |
-          echo "Packaging for macOS..."
+        run: echo "Packaging for macOS..."
 
       - name: Windows Packaging
         if: matrix.platform == 'windows'
         shell: pwsh
-        run: |
-          Write-Host "Packaging for Windows..."
+        run: Write-Host "Packaging for Windows..."
 
       - name: Split and Upload
         shell: bash
