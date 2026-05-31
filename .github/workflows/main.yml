@@ -1,5 +1,6 @@
 name: StockD Multi-Platform Build Pipeline
-  on:
+  
+on:
   # ==========================================
   # INTERACTIVE MANUAL TRIGGER MENU
   # ==========================================
