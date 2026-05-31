@@ -12,7 +12,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy
-          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=0
+          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=14
           flutter build windows --release
           $DEST = "build/windows/x64/runner/Release/data/flutter_assets/backend_bundle"
           if (!(Test-Path $DEST)) { New-Item -Path $DEST -ItemType Directory -Force }
