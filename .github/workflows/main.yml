@@ -54,6 +54,7 @@ jobs:
           matrix = []
           
           if win:
+              # UPDATED: Modern TensorFlow, Python 3.12
               matrix.append({"id": "windows-x64", "os": "windows-latest", "platform": "windows", "arch": "x64", "pkgs": "tensorflow", "python_ver": "3.12"})
           
           if mac:
@@ -142,7 +143,13 @@ jobs:
           $PY_CMD -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           
           cd ML
+
+          # --- DYNAMIC HOOK GENERATION ---
+          echo 'import os' > rthook.py
+          echo 'os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"' >> rthook.py
+          
           $PY_CMD -m PyInstaller --name sage_backend --onedir --noconsole --clean \
+            --runtime-hook rthook.py \
             --add-data "artifacts:artifacts" \
             --collect-all ssl \
             --collect-all certifi \
@@ -158,15 +165,23 @@ jobs:
             
           mkdir -p ../backend
           cp -r dist/sage_backend/* ../backend/
-          rm -rf build dist
+          rm -rf build dist rthook.py
 
       - name: Compile PyInstaller (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          python -m pip install pyinstaller ${{ matrix.pkgs }} "numpy" "protobuf" scikit-learn pandas yfinance fastapi uvicorn
+          # UPDATED: Dropped numpy/protobuf limits for modern TF
+          python -m pip install pyinstaller ${{ matrix.pkgs }} scikit-learn pandas yfinance fastapi uvicorn
+          
           cd ML
+
+          # --- DYNAMIC HOOK GENERATION ---
+          echo "import os" > rthook.py
+          echo "os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'" >> rthook.py
+
           python -m PyInstaller --name sage_backend --onedir --noconsole --clean \
+            --runtime-hook rthook.py \
             --add-data "artifacts;artifacts" \
             --collect-all ssl \
             --collect-all certifi \
@@ -177,9 +192,10 @@ jobs:
             --hidden-import "certifi" \
             --exclude-module tensorboard --exclude-module tensorflow_estimator \
             main.py
+            
           mkdir -p ../backend
           cp -r dist/sage_backend/* ../backend/
-          rm -rf build dist
+          rm -rf build dist rthook.py
 
       # ==========================================
       # WINDOWS PIPELINE STAGES
@@ -272,6 +288,11 @@ jobs:
           sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
           iconutil -c icns StockD.iconset
           rm -R StockD.iconset
+
+          # OVERWRITE THE INTERNAL FLUTTER APP ICON
+          echo "Injecting custom icon into the compiled .app bundle..."
+          cp StockD.icns "build/macos/Build/Products/Release/StockD.app/Contents/Resources/AppIcon.icns"
+          touch "build/macos/Build/Products/Release/StockD.app"
 
           # CREATE THE BRANDED DMG
           echo "Installing create-dmg..."
