@@ -126,9 +126,9 @@ jobs:
           $HOME/flutter/bin/flutter precache
 
       # ==========================================
-      # SAGE BACKEND COMPILATION
+      # SAGE BACKEND COMPILATION (NUITKA)
       # ==========================================
-      - name: Compile PyInstaller (Unix)
+      - name: Compile Nuitka (Unix)
         if: runner.os != 'Windows'
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
@@ -139,63 +139,43 @@ jobs:
             PY_CMD="python"
           fi
           
-          $PY_CMD -m pip install pyinstaller ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
+          $PY_CMD -m pip install nuitka zstandard ordered-set ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn
           
           cd ML
           
-          $PY_CMD -m PyInstaller --name sage_backend --onedir --noconsole --clean \
-            --add-data "artifacts:artifacts" \
-            --collect-all ssl \
-            --collect-all certifi \
-            --collect-all pandas \
-            --collect-all pyarrow \
-            --collect-all scipy \
-            --hidden-import "ssl" \
-            --hidden-import "certifi" \
-            --runtime-tmpdir=. \
-            --collect-submodules ssl \
-            --exclude-module tensorboard --exclude-module tensorflow_estimator \
+          $PY_CMD -m nuitka --standalone --assume-yes-for-downloads \
+            --output-dir=dist \
+            --include-data-dir=artifacts=artifacts \
+            --plugin-enable=anti-bloat \
+            --nofollow-import-to=tensorboard \
+            --nofollow-import-to=tensorflow_estimator \
             main.py
             
-          # --- UNIVERSAL AUTOMATIC DUPLICATE PROTOBUF CLEANUP ---
-          echo "Scanning for all duplicate protocol definitions..."
-          if [ -d "dist/sage_backend" ]; then
-            find dist/sage_backend -name "*.proto" -exec basename {} \; | sort | uniq | while read proto_file; do
-              match_count=$(find dist/sage_backend -name "$proto_file" | wc -l)
-              if [ "$match_count" -gt 1 ]; then
-                echo "Found $match_count duplicates of $proto_file! Purging redundancy..."
-                find dist/sage_backend -name "$proto_file" | tail -n +2 | xargs rm -f
-              fi
-            done
-          fi
-
           mkdir -p ../backend
-          cp -r dist/sage_backend/* ../backend/
-          rm -rf build dist
+          cp -r dist/main.dist/* ../backend/
+          mv ../backend/main ../backend/sage_backend || true
+          rm -rf dist
 
-      - name: Compile PyInstaller (Windows)
+      - name: Compile Nuitka (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          python -m pip install pyinstaller ${{ matrix.pkgs }} scikit-learn pandas yfinance fastapi uvicorn
+          python -m pip install nuitka zstandard ordered-set ${{ matrix.pkgs }} scikit-learn pandas yfinance fastapi uvicorn
           
           cd ML
 
-          python -m PyInstaller --name sage_backend --onedir --noconsole --clean \
-            --add-data "artifacts;artifacts" \
-            --collect-all ssl \
-            --collect-all certifi \
-            --collect-all pandas \
-            --collect-all pyarrow \
-            --collect-all scipy \
-            --hidden-import "ssl" \
-            --hidden-import "certifi" \
-            --exclude-module tensorboard --exclude-module tensorflow_estimator \
+          python -m nuitka --standalone --assume-yes-for-downloads \
+            --output-dir=dist \
+            --include-data-dir=artifacts=artifacts \
+            --plugin-enable=anti-bloat \
+            --nofollow-import-to=tensorboard \
+            --nofollow-import-to=tensorflow_estimator \
             main.py
             
           mkdir -p ../backend
-          cp -r dist/sage_backend/* ../backend/
-          rm -rf build dist
+          cp -r dist/main.dist/* ../backend/
+          mv ../backend/main.exe ../backend/sage_backend.exe || true
+          rm -rf dist
 
       # ==========================================
       # WINDOWS PIPELINE STAGES
