@@ -1,0 +1,64 @@
+name: macOS Build
+on: [workflow_dispatch]
+permissions: {contents: write}
+env:
+  MACOSX_DEPLOYMENT_TARGET: "14.0"
+  PYTHON_VERSION: "3.12.10"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - { runner: macos-15, arch: arm64, tf_pkg: "tensorflow-macos tensorflow-metal" }
+          - { runner: macos-15-intel, arch: x64, tf_pkg: "tensorflow" }
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with: {channel: 'stable'}
+
+      - name: Install Python 3.12.10
+        run: |
+          curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
+          sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
+
+      - name: Build and Package
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance numpy
+          
+          # Nuitka Backend Build
+          cd ML && python3 -m nuitka main.py --standalone --output-dir=../dist --include-package=tensorflow --jobs=8 --low-memory
+          
+          chmod +x ../dist/main.dist/main
+          
+          # Flutter Build
+          flutter build macos --release
+          
+          # Inject Backend
+          DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+          mkdir -p "$DEST" && cp -r ../dist/main.dist/* "$DEST"
+          chmod +x "$DEST/main"
+          
+          # Package DMG
+          hdiutil create -volname "StockD-${{ matrix.arch }}" -srcfolder "build/macos/Build/Products/Release/StockD.app" -ov -format UDZO "StockD-${{ matrix.arch }}.dmg"
+          
+          # Split if > 1.9GB
+          find . -name "StockD-${{ matrix.arch }}.dmg" -size +1900M -exec split -b 1900m {} {}.part_ \;
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf dist build
+
+      - name: Upload
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          make_latest: true
+          overwrite_files: true
+          files: |
+            *.dmg
+            *.dmg.part_*
