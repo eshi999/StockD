@@ -13,9 +13,12 @@
 migrate_working_dir/
 binaries/
 ML/historical/
-Linux/
-Windows/
-MacOS/
+
+# Flutter Build artifacts
+linux/
+windows/
+macos/
+
 # PyInstaller build artifacts
 ML/build/
 ML/dist/
