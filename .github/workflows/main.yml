@@ -35,13 +35,13 @@ jobs:
           matrix = []
           if win: matrix.append({"id": "windows-x64", "os": "self-hosted", "platform": "windows", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow"})
           if mac: 
-              matrix.append({"id": "mac-arm64", "os": "macos-15", "platform": "macos", "arch": "arm64", "jobs": 4, "tf_pkg": "tensorflow-macos tensorflow-metal"})
-              matrix.append({"id": "mac-intel", "os": "macos-15", "platform": "macos", "arch": "x64", "jobs": 4, "tf_pkg": "tensorflow-macos"})
+              matrix.append({"id": "mac-arm64", "os": "macos-15", "platform": "macos", "arch": "arm64", "jobs": 4, "tf_pkg": "tensorflow tensorflow-metal"})
+              matrix.append({"id": "mac-intel", "os": "macos-15", "platform": "macos", "arch": "x64", "jobs": 4, "tf_pkg": "tensorflow"})
           if lin: 
-              matrix.append({"id": "linux-x64-nvidia", "os": "self-hosted", "platform": "linux", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow[and-cuda]==2.19.1"})
-              matrix.append({"id": "linux-x64-intel", "os": "self-hosted", "platform": "linux", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow-intel==2.19.1"})
-              matrix.append({"id": "linux-x64-amd", "os": "self-hosted", "platform": "linux", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow-rocm==2.19.1"})
-              matrix.append({"id": "linux-arm64", "os": "ubuntu-24.04-arm", "platform": "linux", "arch": "arm64", "jobs": 4, "tf_pkg": "tensorflow==2.19.1"})
+              matrix.append({"id": "linux-x64-nvidia", "os": "self-hosted", "platform": "linux", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow[and-cuda]"})
+              matrix.append({"id": "linux-x64-intel", "os": "self-hosted", "platform": "linux", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow-intel"})
+              matrix.append({"id": "linux-x64-amd", "os": "self-hosted", "platform": "linux", "arch": "x64", "jobs": 14, "tf_pkg": "tensorflow"})
+              matrix.append({"id": "linux-arm64", "os": "ubuntu-24.04-arm", "platform": "linux", "arch": "arm64", "jobs": 4, "tf_pkg": "tensorflow"})
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"matrix={json.dumps(matrix)}")
 
@@ -58,7 +58,7 @@ jobs:
 
       - name: Build backend (Windows)
         if: matrix.platform == 'windows'
-        shell: pwsh
+        shell: powershell
         run: |
           pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
           $TF_PATH = python -c "import tensorflow as tf; print(tf.sysconfig.get_lib())"
