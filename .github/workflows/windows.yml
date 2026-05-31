@@ -1,76 +1,35 @@
 name: Windows Build
-
-on:
-  workflow_dispatch:
-
-permissions:
-  contents: write
+on: [workflow_dispatch]
+permissions: {contents: write}
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Build Backend (Nuitka)
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Build and Package
         shell: powershell
         run: |
           pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance
-          # Build with Nuitka
-          python -m nuitka ML/main.py --standalone --assume-yes-for-downloads --output-dir=dist --jobs=14 --include-package=tensorflow --plugin-enable=anti-bloat --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
-          # Move binary to a clean staging area for packaging
-          New-Item -ItemType Directory -Path "pkg_staging" -Force
-          Copy-Item -Recurse -Path "dist/main.dist/*" -Destination "pkg_staging/"
-
-      - name: Create NSIS Installer Script
-        shell: powershell
-        run: |
-          $nsisScript = @"
-          !include "MUI2.nsh"
-          Name "StockD"
-          OutFile "StockD-Installer.exe"
-          InstallDir "\$PROGRAMFILES\StockD"
-          !insertmacro MUI_PAGE_DIRECTORY
-          !insertmacro MUI_PAGE_INSTFILES
-          !insertmacro MUI_LANGUAGE "English"
-          Section
-            SetOutPath "\$INSTDIR"
-            File /r "pkg_staging\*"
-            WriteUninstaller "\$INSTDIR\uninstall.exe"
-          SectionEnd
-          "@
-          $nsisScript | Out-File -FilePath "installer.nsi" -Encoding ascii
-
-      - name: Run NSIS Packaging
-        shell: powershell
-        run: |
-          # Ensure makensis is in path (GitHub windows-latest includes it)
-          & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
+          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow
+          & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=1.0.0 installer.nsi
           
-          # Handle potential multi-gigabyte splitting as requested
+          # Splitting logic
           $file = Get-Item "StockD-Installer.exe"
           if ($file.Length -gt 1990000000) {
-            Write-Host "Splitting installer..."
-            # Using external split or simple PowerShell chunking
             $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
             $chunkSize = 1900MB
-            $count = [Math]::Ceiling($bytes.Length / $chunkSize)
-            for ($i = 0; $i -lt $count; $i++) {
+            for ($i = 0; $i -lt [Math]::Ceiling($bytes.Length / $chunkSize); $i++) {
               $chunk = $bytes[$i*$chunkSize..(([Math]::Min(($i+1)*$chunkSize, $bytes.Length) - 1))]
               [System.IO.File]::WriteAllBytes("StockD-Installer.exe.part_$i", $chunk)
             }
           }
-
-      - name: Upload Release
+      - name: Upload
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          make_latest: true
           overwrite_files: true
           files: |
             StockD-Installer.exe
