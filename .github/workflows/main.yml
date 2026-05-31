@@ -149,6 +149,8 @@ jobs:
             --plugin-enable=anti-bloat \
             --nofollow-import-to=tensorboard \
             --nofollow-import-to=tensorflow_estimator \
+            --nofollow-import-to=tensorflow.compiler \
+            --nofollow-import-to=tensorflow.lite \
             main.py
             
           mkdir -p ../backend
@@ -170,6 +172,8 @@ jobs:
             --plugin-enable=anti-bloat \
             --nofollow-import-to=tensorboard \
             --nofollow-import-to=tensorflow_estimator \
+            --nofollow-import-to=tensorflow.compiler \
+            --nofollow-import-to=tensorflow.lite \
             main.py
             
           mkdir -p ../backend
