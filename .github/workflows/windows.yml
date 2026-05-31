@@ -7,18 +7,41 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
+
       - name: Build and Package
         shell: powershell
         run: |
+          # Use pre-installed Python, upgrade pip, and install requirements
+          python -m pip install --upgrade pip
           pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance
-          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow
-          & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=1.0.0 installer.nsi
           
-          # Splitting logic
+          # Build with Nuitka (using all available logical cores on your XPS)
+          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=0
+          
+          # Create NSIS script
+          $nsisScript = @"
+          !include "MUI2.nsh"
+          Name "StockD"
+          OutFile "StockD-Installer.exe"
+          InstallDir "`$PROGRAMFILES\StockD"
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "English"
+          Section
+            SetOutPath "`$INSTDIR"
+            File /r "dist\main.dist\*"
+            WriteUninstaller "`$INSTDIR\uninstall.exe"
+          SectionEnd
+          "@
+          $nsisScript | Out-File -FilePath "installer.nsi" -Encoding ascii
+          
+          # Run NSIS
+          & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
+          
+          # Splitting logic (if binary > 1.9GB)
           $file = Get-Item "StockD-Installer.exe"
           if ($file.Length -gt 1990000000) {
+            Write-Host "File too large, splitting..."
             $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
             $chunkSize = 1900MB
             for ($i = 0; $i -lt [Math]::Ceiling($bytes.Length / $chunkSize); $i++) {
@@ -26,10 +49,12 @@ jobs:
               [System.IO.File]::WriteAllBytes("StockD-Installer.exe.part_$i", $chunk)
             }
           }
-      - name: Upload
+
+      - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
+          make_latest: true
           overwrite_files: true
           files: |
             StockD-Installer.exe
