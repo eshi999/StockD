@@ -1,72 +1,9 @@
-name: Windows Build
-on: [workflow_dispatch]
-permissions: {contents: write}
-
-jobs:
-  build:
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build and Package
+- name: Cleanup Build Artifacts
+        if: always() # Always runs, even if the build fails
         shell: powershell
         run: |
-          # Explicitly set Flutter path for this session
-          $env:Path += ";C:\Users\Gautam Mahajan\develop\flutter_windows_3.44.0-stable\bin"
-          
-          # Verify Flutter
-          flutter --version
-
-          # Setup Environment
-          python -m pip install --upgrade pip
-          pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy
-          
-          # Nuitka Backend Compilation
-          python -m nuitka ML/main.py --standalone --output-dir=dist --include-package=tensorflow --jobs=0
-          
-          # Flutter Frontend Build
-          flutter build windows --release
-          
-          # Inject Backend Assets
-          $DEST = "build/windows/x64/runner/Release/data/flutter_assets/backend_bundle"
-          if (!(Test-Path $DEST)) { New-Item -Path $DEST -ItemType Directory -Force }
-          Copy-Item -Recurse -Path "dist/main.dist/*" -Destination $DEST
-          
-          # NSIS Installer Generation
-          $nsisScript = @"
-          !include "MUI2.nsh"
-          Name "StockD"
-          OutFile "StockD-Installer.exe"
-          InstallDir "`$PROGRAMFILES\StockD"
-          !insertmacro MUI_PAGE_DIRECTORY
-          !insertmacro MUI_PAGE_INSTFILES
-          !insertmacro MUI_LANGUAGE "English"
-          Section
-            SetOutPath "`$INSTDIR"
-            File /r "build\windows\x64\runner\Release\*"
-            WriteUninstaller "`$INSTDIR\uninstall.exe"
-          SectionEnd
-          "@
-          $nsisScript | Out-File -FilePath "installer.nsi" -Encoding ascii
-          & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
-          
-          # Binary Sharding (for files > 1.9GB)
-          $file = Get-Item "StockD-Installer.exe"
-          if ($file.Length -gt 1990000000) {
-            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
-            $chunkSize = 1900MB
-            for ($i = 0; $i -lt [Math]::Ceiling($bytes.Length / $chunkSize); $i++) {
-              $chunk = $bytes[$i*$chunkSize..(([Math]::Min(($i+1)*$chunkSize, $bytes.Length) - 1))]
-              [System.IO.File]::WriteAllBytes("StockD-Installer.exe.part_$i", $chunk)
-            }
-          }
-
-      - name: Upload Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          make_latest: true
-          overwrite_files: true
-          files: |
-            StockD-Installer.exe
-            StockD-Installer.exe.part_*
+          Remove-Item -Recurse -Force "dist" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue
+          Remove-Item -Force "installer.nsi" -ErrorAction SilentlyContinue
+          # Optionally clear the Python cache if you have space issues
+          # Remove-Item -Recurse -Force "$env:LOCALAPPDATA\pip\Cache" -ErrorAction SilentlyContinue
