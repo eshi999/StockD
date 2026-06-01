@@ -123,9 +123,10 @@ jobs:
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           RPM_ROOT=$HOME/rpmbuild
           rm -rf $RPM_ROOT
-          mkdir -p $RPM_ROOT/{SPECS,RPMS,BUILDROOT}
+          mkdir -p $RPM_ROOT/{SPECS,RPMS,BUILDROOT,BUILD,SOURCES}
           
-          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}"
+          # FIXED: Sync the staging folder name dynamically for all matrix architectures
+          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-${{ matrix.id }}-1.2.0-1.${{ matrix.rpm_arch }}"
           mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_STAGE/usr/share/applications $RPM_STAGE/usr/share/pixmaps
           
           cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
@@ -266,7 +267,7 @@ jobs:
           rm -rf $RPM_ROOT
           mkdir -p $RPM_ROOT/{SPECS,RPMS,BUILDROOT}
           
-          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-1.2.0-1.aarch64"
+          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-linux-arm64-1.2.0-1.aarch64"
           mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_STAGE/usr/share/applications $RPM_STAGE/usr/share/pixmaps
           
           cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
