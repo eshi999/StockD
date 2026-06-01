@@ -24,7 +24,20 @@ jobs:
           import os
 
           matrix = []
-          # Consolidated x64 targets running sequentially on your local hardware
+          
+          # 1. Hardware-Optimized Target: Local Laptop NVIDIA GPU (CUDA Build)
+          matrix.append({
+            "id": "linux-x64-nvidia",
+            "os": "self-hosted",
+            "platform": "linux",
+            "arch": "x64",
+            "deb_arch": "amd64",
+            "rpm_arch": "x86_64",
+            "pkgs": "tensorflow[and-cuda]",
+            "jobs": 6
+          })
+
+          # 2. Universal x64 Target: Combines Intel oneDNN Extensions + AMD Core CPU Fallbacks
           matrix.append({
             "id": "linux-x64-universal",
             "os": "self-hosted",
@@ -32,10 +45,11 @@ jobs:
             "arch": "x64",
             "deb_arch": "amd64",
             "rpm_arch": "x86_64",
-            "pkgs": "tensorflow",
+            "pkgs": "tensorflow intel-extension-for-tensorflow[cpu]",
             "jobs": 6
           })
-          # GitHub-hosted infrastructure targeting cloud ARM64 systems
+          
+          # 3. Cloud-Hosted Infrastructure Targeting Cloud ARM64 Systems
           matrix.append({
             "id": "linux-arm64",
             "os": "ubuntu-24.04-arm",
@@ -174,7 +188,7 @@ jobs:
           Version: 1.2.0
           Architecture: ${{ matrix.deb_arch }}
           Maintainer: Gautam Mahajan
-          Description: AI Stock App Optimized for Linux
+          Description: AI Stock App Optimized for ${{ matrix.id }}
           Depends: libgtk-3-0
           EOF
           
@@ -193,7 +207,7 @@ jobs:
           rm -rf $RPM_ROOT/SPECS $RPM_ROOT/RPMS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
           mkdir -p $RPM_ROOT/{SPECS,RPMS}
           
-          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-${{ matrix.id }}-1.2.0-1.%{_arch}"
+          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-${{ matrix.id }}-1.2.0-1.${{ matrix.rpm_arch }}"
           mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_STAGE/usr/share/applications $RPM_STAGE/usr/share/pixmaps
           
           cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
@@ -248,7 +262,7 @@ jobs:
           done
 
       # =====================================================
-      # PRODUCTION UPLOAD INFRASTRUCTURE Pipeline
+      # PRODUCTION UPLOAD INFRASTRUCTURE PIPELINE
       # =====================================================
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v2
