@@ -265,13 +265,16 @@ jobs:
       - name: Split Large Binaries
         shell: bash
         run: |
-          for f in *.deb *.rpm 2>/dev/null; do
-            if [ -f "$f" ]; then
-              size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
-              if [ "$size" -gt 1990000000 ]; then
-                echo "Splitting heavy build target portfolio: $f"
-                split -b 1900M "$f" "${f}.part_"
-                rm "$f"
+          # FIXED: Sanitized wildcard loops to clear inline token redirection syntax errors
+          for f in *; do
+            if [[ "$f" == *.deb || "$f" == *.rpm ]]; then
+              if [ -f "$f" ]; then
+                size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
+                if [ "$size" -gt 1990000000 ]; then
+                  echo "Splitting heavy build target portfolio: $f"
+                  split -b 1900M "$f" "${f}.part_"
+                  rm -f "$f"
+                fi
               fi
             fi
           done
