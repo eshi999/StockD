@@ -180,25 +180,15 @@ open /Applications/StockD.app
 
 ### NVIDIA Systems
 
-Large CUDA-enabled packages may be distributed in multiple archive segments.
-
-```bash
-cat StockD-linux-x64-nvidia.deb.part_* \
-> StockD-linux-x64-nvidia.deb
+```text
+StockD-linux-x64-nvidia-1.2.0.deb
+StockD-linux-x64-nvidia-1.2.0.rpm
 ```
 
-### AMD Systems
-
+### Universal (Intel + AMD)
 ```text
-StockD-linux-x64-amd.deb
-StockD-linux-x64-amd.rpm
-```
-
-### Intel Systems
-
-```text
-StockD-linux-x64-intel.deb
-StockD-linux-x64-intel.rpm
+StockD-linux-x64-universal-1.2.0.deb
+StockD-linux-x64-universal-1.2.0.rpm
 ```
 
 ### ARM64 Systems
