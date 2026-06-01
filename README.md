@@ -55,8 +55,7 @@ Everything runs directly from the application bundle.
 | macOS Apple Silicon | ARM64        | TensorFlow 3.x + tensorflow-metal | Apple Metal Performance Shaders (MPS) |
 | macOS Intel         | x64          | TensorFlow 3.x                    | AVX / AVX2 CPU Instructions           |
 | Linux NVIDIA        | x64          | TensorFlow 3.x + Bundled CUDA     | Self-Contained CUDA / cuDNN Runtime   |
-| Linux Intel         | x64          | TensorFlow 3.x + Intel Extension  | Intel oneDNN Optimizations            |
-| Linux AMD           | x64          | TensorFlow 3.x                    | CPU Vectorization                     |
+| Linux AMD + Intel   | x64          | TensorFlow 3.x + Intel Excention  | CPU Vectorization + Intel oneDNN Optimizations|
 | Linux ARM64         | ARM64        | TensorFlow 3.x                    | AArch64 NEON SIMD                     |
 
 ---
