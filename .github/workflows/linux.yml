@@ -108,7 +108,6 @@ jobs:
             PY_BIN="python"
           else
             echo "Provisioning Cloud-Hosted ARM64 Environment..."
-            python3 -m pip install --upgrade pip
             pip3 install nuitka zstandard ordered-set ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn peewee
             PY_BIN="python3"
           fi
