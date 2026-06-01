@@ -71,7 +71,6 @@ jobs:
 
       - name: Build Flutter GUI
         run: |
-          sudo apt-get update && sudo apt-get install -y rpm dpkg-dev
           flutter config --enable-linux-desktop
           flutter build linux --release --build-name=1.2.0
 
