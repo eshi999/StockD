@@ -125,8 +125,8 @@ jobs:
           rm -rf $RPM_ROOT
           mkdir -p $RPM_ROOT/{SPECS,RPMS,BUILDROOT,BUILD,SOURCES}
           
-          # FIXED: Sync the staging folder name dynamically for all matrix architectures
-          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-${{ matrix.id }}-1.2.0-1.${{ matrix.rpm_arch }}"
+          # Target root staging folder definition
+          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-${{ matrix.id }}"
           mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_STAGE/usr/share/applications $RPM_STAGE/usr/share/pixmaps
           
           cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
@@ -151,7 +151,13 @@ jobs:
           /usr/share/pixmaps/stockd.png
           EOF
           
-          rpmbuild -bb --define "__strip /bin/true" --define "_topdir $RPM_ROOT" $RPM_ROOT/SPECS/StockD.spec
+          # FIXED: Forced explicit buildroot absolute flag parameters to lock path evaluations
+          rpmbuild -bb \
+            --define "__strip /bin/true" \
+            --define "_topdir $RPM_ROOT" \
+            --buildroot "$RPM_STAGE" \
+            $RPM_ROOT/SPECS/StockD.spec
+            
           mv $RPM_ROOT/RPMS/${{ matrix.rpm_arch }}/*.rpm ./StockD-${{ matrix.id }}-1.2.0.rpm
           rm -rf $RPM_ROOT linux_desktop
 
