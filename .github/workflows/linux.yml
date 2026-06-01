@@ -103,13 +103,11 @@ jobs:
             conda install -y nuitka zstandard ordered-set scikit-learn pandas fastapi uvicorn -c conda-forge
             conda install -y yfinance -c conda-forge
             
-            # FIXED: Removed numpy<2 and protobuf locks to leverage your local modern env configurations seamlessly
             python -m pip install ${{ matrix.pkgs }} "protobuf<=3.20.3"
             PY_BIN="python"
           else
             echo "Provisioning Cloud-Hosted ARM64 Environment..."
-            # FIXED: Total truncation safety, unpinned numpy completely, and added break system overrides for global site-packages
-            pip3 install --break-system-packages nuitka zstandard ordered-set ${{ matrix.pkgs }} scikit-learn pandas yfinance fastapi uvicorn peewee
+            pip3 install --break-system-packages --ignore-installed nuitka zstandard ordered-set ${{ matrix.pkgs }} scikit-learn pandas yfinance fastapi uvicorn peewee
             PY_BIN="python3"
           fi
 
@@ -205,7 +203,6 @@ jobs:
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           RPM_ROOT=$HOME/rpmbuild
           
-          # Scrub dynamic temporary repositories completely to prevent lock interference
           rm -rf $RPM_ROOT/SPECS $RPM_ROOT/RPMS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
           mkdir -p $RPM_ROOT/{SPECS,RPMS}
           
@@ -218,9 +215,7 @@ jobs:
           ln -s /usr/lib/StockD-1.2.0/stockd $RPM_STAGE/usr/bin/stockd
           chmod 755 $RPM_STAGE/usr/lib/StockD-1.2.0/stockd
           
-          # FIXED: Concrete physical blueprint file creation to satisfy Fedora package headers
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
-          # Force compiler overrides to bypass the 20-minute dependency scanning freeze
           %define _use_internal_dependency_generator 0
           %define __find_requires %{nil}
           %define __find_provides %{nil}
@@ -240,7 +235,6 @@ jobs:
           /usr/share/pixmaps/stockd.png
           EOF
           
-          # Target build root explicitly via strict path declaration flags
           rpmbuild -bb \
             --define "__strip /bin/true" \
             --define "_topdir $RPM_ROOT" \
@@ -249,7 +243,6 @@ jobs:
             
           mv $RPM_ROOT/RPMS/${{ matrix.rpm_arch }}/*.rpm ./StockD-${{ matrix.id }}-1.2.0.rpm
           
-          # FIXED: Target transient folders safely, bypassing SQLite system database restrictions
           rm -rf $RPM_ROOT/SPECS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
 
       # =====================================================
