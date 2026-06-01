@@ -45,17 +45,23 @@ jobs:
           
           chmod +x "$BINARY"
           flutter build macos --release
-          DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
-          mkdir -p "$DEST" && cp -r dist_arm64/main.dist/* "$DEST"
 
-          # Copy model artifacts so sage_bridge can find them at runtime
+          DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+          mkdir -p "$DEST"
+
+          # 1. Copy all compiled Nuitka dependencies
+          cp -r dist_arm64/main.dist/* "$DEST"
+
+          # 2. Remove raw Nuitka binary name, replace with sage_backend
+          rm -f "$DEST/main" "$DEST/main.bin" 2>/dev/null || true
+          mv "$BINARY" "$DEST/sage_backend"
+          chmod 755 "$DEST/sage_backend"
+
+          # 3. Copy model artifacts alongside the binary
           cp -r ML/artifacts "$DEST/" 2>/dev/null || true
           cp ML/sage_model.keras "$DEST/" 2>/dev/null || true
           cp ML/*.pkl "$DEST/" 2>/dev/null || true
           cp ML/ml_config.py "$DEST/" 2>/dev/null || true
-
-          mv "$BINARY" "$DEST/sage_backend"
-          chmod 755 "$DEST/sage_backend"
           
           hdiutil create -volname "StockD-mac-arm" -srcfolder "build/macos/Build/Products/Release/StockD.app" -ov -format UDZO "StockD-mac-arm.dmg"
 
@@ -104,17 +110,23 @@ jobs:
           
           chmod +x "$BINARY"
           flutter build macos --release
-          DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
-          mkdir -p "$DEST" && cp -r dist_intel/main.dist/* "$DEST"
 
-          # Copy model artifacts so sage_bridge can find them at runtime
+          DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+          mkdir -p "$DEST"
+
+          # 1. Copy all compiled Nuitka dependencies
+          cp -r dist_intel/main.dist/* "$DEST"
+
+          # 2. Remove raw Nuitka binary name, replace with sage_backend
+          rm -f "$DEST/main" "$DEST/main.bin" 2>/dev/null || true
+          mv "$BINARY" "$DEST/sage_backend"
+          chmod 755 "$DEST/sage_backend"
+
+          # 3. Copy model artifacts alongside the binary
           cp -r ML/artifacts "$DEST/" 2>/dev/null || true
           cp ML/sage_model.keras "$DEST/" 2>/dev/null || true
           cp ML/*.pkl "$DEST/" 2>/dev/null || true
           cp ML/ml_config.py "$DEST/" 2>/dev/null || true
-
-          mv "$BINARY" "$DEST/sage_backend"
-          chmod 755 "$DEST/sage_backend"
           
           hdiutil create -volname "StockD-mac-intel" -srcfolder "build/macos/Build/Products/Release/StockD.app" -ov -format UDZO "StockD-mac-intel.dmg"
 
