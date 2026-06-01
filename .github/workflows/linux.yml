@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   setup-matrix:
-    name: Configure Linux Targets
+    name: Configure Hardware Targets
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.gen.outputs.matrix }}
@@ -18,10 +18,10 @@ jobs:
         run: |
           import json, os
           matrix = [
-            {"id": "nvidia", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow[and-cuda]", "python_ver": "3.12"},
-            {"id": "intel", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow-intel", "python_ver": "3.12"},
-            {"id": "amd", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow", "python_ver": "3.12"},
-            {"id": "arm64", "os": "ubuntu-24.04-arm", "arch": "arm64", "tf_pkg": "tensorflow", "python_ver": "3.12"}
+            {"id": "nvidia", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow[and-cuda]", "deb_arch": "amd64", "rpm_arch": "x86_64"},
+            {"id": "intel", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow-intel", "deb_arch": "amd64", "rpm_arch": "x86_64"},
+            {"id": "amd", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow", "deb_arch": "amd64", "rpm_arch": "x86_64"},
+            {"id": "arm64", "os": "ubuntu-24.04-arm", "arch": "arm64", "tf_pkg": "tensorflow", "deb_arch": "arm64", "rpm_arch": "aarch64"}
           ]
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
             f.write(f"matrix<<EOF\n{json.dumps(matrix)}\nEOF\n")
@@ -36,29 +36,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        if: runner.os != 'self-hosted'
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python_ver }}
-
       - name: Build backend (Nuitka)
         shell: bash
         run: |
-          # Use existing Conda on self-hosted, fallback to pip on cloud ARM64
+          # Use existing Conda on self-hosted (XPS), pip on cloud ARM64
           if [ "${{ matrix.os }}" == "self-hosted" ]; then
             source ~/anaconda3/bin/activate sage_env || source ~/miniconda3/bin/activate sage_env
           fi
+          pip install --upgrade pip
           pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
           
-          # Nuitka Compile
+          # Inject Protobuf Fix
+          echo "import os; os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'" > rthook.py
+          
           cd ML && python -m nuitka main.py --standalone --output-dir=dist \
-            --jobs=$(nproc) --plugin-enable=anti-bloat \
+            --jobs=$(nproc) --plugin-enable=anti-bloat --runtime-hook=rthook.py \
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
           
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend || true
-          rm -rf dist
+          chmod 755 ../backend/sage_backend
+          rm -rf dist rthook.py
 
       - name: Build Flutter & Package
         run: |
@@ -72,7 +70,6 @@ jobs:
           
           cp -r $BUNDLE/* $PKG/usr/lib/stockd/
           cp -r backend/* $PKG/usr/lib/stockd/backend/
-          chmod 755 $PKG/usr/lib/stockd/backend/sage_backend
           
           # Create Desktop Entry
           cat > $PKG/usr/share/applications/stockd.desktop << EOF
@@ -88,16 +85,16 @@ jobs:
 
           # Build DEB
           mkdir -p $PKG/DEBIAN
-          echo -e "Package: stockd-${{ matrix.id }}\nVersion: 1.2.0\nArchitecture: ${{ matrix.arch == 'arm64' && 'arm64' || 'amd64' }}\nMaintainer: StockD\nDescription: AI Stock App\nDepends: libgtk-3-0" > $PKG/DEBIAN/control
+          echo -e "Package: stockd-${{ matrix.id }}\nVersion: 1.2.0\nArchitecture: ${{ matrix.deb_arch }}\nMaintainer: StockD\nDescription: AI Stock App\nDepends: libgtk-3-0" > $PKG/DEBIAN/control
           dpkg-deb --build $PKG StockD-${{ matrix.id }}.deb
           
           # Build RPM
           RPM=$HOME/rpmbuild
           mkdir -p $RPM/{BUILDROOT,SPECS,RPMS}
           cp -r $PKG/* $RPM/BUILDROOT/stockd-${{ matrix.id }}.x86_64/
-          echo -e "Name: stockd-${{ matrix.id }}\nVersion: 1.2.0\nRelease: 1\nBuildArch: x86_64\n%files\n/usr" > $RPM/SPECS/stockd.spec
+          echo -e "Name: stockd-${{ matrix.id }}\nVersion: 1.2.0\nRelease: 1\nBuildArch: ${{ matrix.rpm_arch }}\n%files\n/usr" > $RPM/SPECS/stockd.spec
           rpmbuild -bb --define "_topdir $RPM" $RPM/SPECS/stockd.spec
-          mv $RPM/RPMS/x86_64/*.rpm StockD-${{ matrix.id }}.rpm
+          mv $RPM/RPMS/${{ matrix.rpm_arch }}/*.rpm StockD-${{ matrix.id }}.rpm
 
       - name: Split and Upload
         shell: bash
