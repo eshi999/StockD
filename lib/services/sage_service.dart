@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/models.dart';
 
 class SageService {
-  static const String _baseUrl = 'http://localhost:8000';
+  static const String _baseUrl = 'http://127.0.0.1:8000';
   final http.Client _client = http.Client();
 
   // ── Health check ──────────────────────────────────────────────────────────
@@ -12,7 +12,7 @@ class SageService {
     try {
       final res = await _client
           .get(Uri.parse('$_baseUrl/health'))
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 2));
       return res.statusCode == 200;
     } catch (_) {
       return false;

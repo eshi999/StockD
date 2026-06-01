@@ -24,17 +24,16 @@ class BackendNotifier extends Notifier<BackendStatus> {
   }
 
   Future<void> _startBackend() async {
-    // Quick check — already running from a previous launch
+    // Always kill any zombie process holding port 8000 before launching fresh
     if (await ref.read(sageServiceProvider).isBackendAlive()) {
-      state = BackendStatus.online;
-      return;
+      debugPrint('SAGE: port 8000 already active, killing before relaunch');
+      stopBackend();
+      await Future.delayed(const Duration(seconds: 2));
     }
 
     try {
-      // ----------------------------------------------------------------------
-      // INJECTED FIX: Bypass strict C++ Protobuf registries on macOS/Intel
-      // ----------------------------------------------------------------------
-      final Map<String, String> secureEnv = Map<String, String>.from(Platform.environment);
+      final Map<String, String> secureEnv =
+          Map<String, String>.from(Platform.environment);
       secureEnv["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python";
 
       if (kReleaseMode) {
@@ -52,28 +51,47 @@ class BackendNotifier extends Notifier<BackendStatus> {
           [],
           workingDirectory: p.dirname(backendPath),
           mode: ProcessStartMode.normal,
-          environment: secureEnv, // <-- Applied to Release
+          environment: secureEnv,
         );
-
-        // Pipe stderr so crash logs surface the real error
-        _process!.stderr
-            .transform(const SystemEncoding().decoder)
-            .listen((line) => debugPrint('SAGE stderr: $line'));
-
       } else {
         // Development: run via local Python
         _process = await Process.start(
-          'python',
+          Platform.isWindows ? 'python' : 'python3',
           ['-m', 'uvicorn', 'main:app', '--port', '8000'],
           workingDirectory: _mlDir(),
           mode: ProcessStartMode.normal,
-          environment: secureEnv, // <-- Applied to Development
+          environment: secureEnv,
         );
       }
 
-      // Poll until backend responds — TF can take 30-60s on cold start
-      for (int i = 0; i < 60; i++) {
+      // Pipe stdout and stderr so all Python output surfaces in Flutter console
+      _process!.stdout
+          .transform(const SystemEncoding().decoder)
+          .listen((line) => debugPrint('SAGE stdout: $line'));
+      _process!.stderr
+          .transform(const SystemEncoding().decoder)
+          .listen((line) => debugPrint('SAGE stderr: $line'));
+
+      // Monitor for unexpected crashes after startup
+      _process!.exitCode.then((code) {
+        debugPrint('SAGE: process exited with code $code');
+        if (state == BackendStatus.online) {
+          state = BackendStatus.offline;
+        }
+        _process = null;
+      });
+
+      // Poll until backend responds — TF can take 90-120s on cold start
+      for (int i = 0; i < 120; i++) {
         await Future.delayed(const Duration(seconds: 1));
+
+        // Stop polling immediately if process already died
+        if (_process == null) {
+          debugPrint('SAGE: process died during startup');
+          state = BackendStatus.offline;
+          return;
+        }
+
         if (await ref.read(sageServiceProvider).isBackendAlive()) {
           debugPrint('SAGE: online after ${i + 1}s');
           state = BackendStatus.online;
@@ -81,7 +99,7 @@ class BackendNotifier extends Notifier<BackendStatus> {
         }
       }
 
-      debugPrint('SAGE: timed out after 60s');
+      debugPrint('SAGE: timed out after 120s');
       state = BackendStatus.offline;
 
     } catch (e) {
@@ -95,16 +113,6 @@ class BackendNotifier extends Notifier<BackendStatus> {
         Platform.isWindows ? 'sage_backend.exe' : 'sage_backend';
 
     if (Platform.isLinux) {
-      // resolvedExecutable on Linux returns the symlink in /usr/bin/ —
-      // resolve it to get the real binary in /usr/lib/StockD-1.2.0/
-      //
-      // Layout:
-      //   /usr/lib/StockD-1.2.0/
-      //     stockd
-      //     data/flutter_assets/backend_bundle/
-      //       sage_backend/sage_backend   ← nested (correct)
-      //       sage_backend                ← flat (old builds)
-      // final String realExe =
       final String realExe =
           File(Platform.resolvedExecutable).resolveSymbolicLinksSync();
       final String bundleDir = p.join(
@@ -112,14 +120,6 @@ class BackendNotifier extends Notifier<BackendStatus> {
       return _pickPath(bundleDir, binaryName);
 
     } else if (Platform.isMacOS) {
-      // resolvedExecutable = StockD.app/Contents/MacOS/StockD
-      // Assets live at:
-      //   StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/
-      //
-      // Layout:
-      //   backend_bundle/
-      //     sage_backend/sage_backend     ← nested (correct)
-      //     sage_backend                  ← flat (old builds)
       final String contentsDir =
           p.dirname(p.dirname(Platform.resolvedExecutable));
       final String bundleDir = p.join(
@@ -132,14 +132,6 @@ class BackendNotifier extends Notifier<BackendStatus> {
       return _pickPath(bundleDir, binaryName);
 
     } else if (Platform.isWindows) {
-      // No symlinks — resolvedExecutable is the real path.
-      //
-      // Layout:
-      //   StockD\
-      //     StockD.exe
-      //     data\flutter_assets\backend_bundle\
-      //       sage_backend\sage_backend.exe  ← nested (correct)
-      //       sage_backend.exe               ← flat (old builds)
       final String bundleDir = p.join(
           p.dirname(Platform.resolvedExecutable),
           'data',
@@ -153,9 +145,6 @@ class BackendNotifier extends Notifier<BackendStatus> {
     }
   }
 
-  // Handles both layouts:
-  //   nested: backend_bundle/sage_backend/sage_backend(.exe)  ← new builds
-  //   flat:   backend_bundle/sage_backend(.exe)               ← old builds
   String _pickPath(String bundleDir, String binaryName) {
     final String nested = p.join(bundleDir, 'sage_backend', binaryName);
     final String flat = p.join(bundleDir, binaryName);
@@ -170,6 +159,8 @@ class BackendNotifier extends Notifier<BackendStatus> {
 
   Future<void> retry() async {
     state = BackendStatus.starting;
+    stopBackend();
+    await Future.delayed(const Duration(seconds: 2));
     await _startBackend();
   }
 
@@ -179,7 +170,6 @@ class BackendNotifier extends Notifier<BackendStatus> {
   }
 
   String _mlDir() {
-    // Dev mode only — walks up from the executable to find the ML/ folder
     final exe = Platform.resolvedExecutable;
     Directory dir = File(exe).parent;
     for (int i = 0; i < 8; i++) {

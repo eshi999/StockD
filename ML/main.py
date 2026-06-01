@@ -2,11 +2,11 @@
 import os
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
+import uvicorn
 import sage_bridge as sage
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-
 
 app = FastAPI(title="StockD SAGE API", version="2.0.0")
 
@@ -17,12 +17,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 @app.on_event("startup")
 async def startup():
     loaded = sage.load_model()
     print(f"SAGE model loaded: {loaded}")
-
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/health")
@@ -32,7 +30,6 @@ def health():
         "model_loaded": sage._model is not None,
     }
 
-
 # ── Stock History ─────────────────────────────────────────────────────────────
 @app.get("/history/{ticker}")
 def history(ticker: str, timeframe: str = "1Y"):
@@ -41,12 +38,10 @@ def history(ticker: str, timeframe: str = "1Y"):
         raise HTTPException(status_code=404, detail=result["error"])
     return result
 
-
 # ── Market Snapshot ───────────────────────────────────────────────────────────
 @app.get("/market/snapshot")
 def market_snapshot():
     return sage.get_market_snapshot()
-
 
 # ── SAGE Explain ──────────────────────────────────────────────────────────────
 class ExplainRequest(BaseModel):
@@ -56,7 +51,6 @@ class ExplainRequest(BaseModel):
     user_answer: str
     correct_answer: str
     chart_symbol: str | None = None
-
 
 @app.post("/sage/explain")
 def explain(req: ExplainRequest):
@@ -70,12 +64,10 @@ def explain(req: ExplainRequest):
     )
     return result
 
-
 # ── SAGE Chat ─────────────────────────────────────────────────────────────────
 class ChatMessage(BaseModel):
     message: str
     history: list[dict] = []
-
 
 @app.post("/sage/chat")
 def chat(req: ChatMessage):
@@ -88,13 +80,7 @@ def chat(req: ChatMessage):
         "disclaimer": "Educational information only. Not financial advice.",
     }
 
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(
-        app,  # your FastAPI app
-        host="0.0.0.0",
-        port=8000,
-        reload=False,  # must be False in PyInstaller; reload uses multiprocessing
-    )
+# Auto-start when run as compiled binary or direct script,
+# but not when launched via 'uvicorn main:app' CLI
+if __name__ == "__main__" or Path(sys.executable).stem == "sage_backend":
+    uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
