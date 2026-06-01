@@ -127,6 +127,13 @@ jobs:
           mv ../backend/main.bin ../backend/sage_backend || mv ../backend/main ../backend/sage_backend || true
           chmod 755 ../backend/sage_backend
           rm -rf dist
+
+          # Copy model artifacts so sage_bridge can find them at runtime
+          cp -r artifacts ../backend/ 2>/dev/null || true
+          cp sage_model.keras ../backend/ 2>/dev/null || true
+          cp *.pkl ../backend/ 2>/dev/null || true
+          cp ml_config.py ../backend/ 2>/dev/null || true
+
           cd ..
 
       # =====================================================
