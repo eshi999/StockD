@@ -123,17 +123,23 @@ jobs:
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
 
           mkdir -p ../backend
-          cp -r dist/main.dist/* ../backend/
-          mv ../backend/main.bin ../backend/sage_backend || mv ../backend/main ../backend/sage_backend || true
-          chmod 755 ../backend/sage_backend
-          rm -rf dist
 
-          # Copy model artifacts so sage_bridge can find them at runtime
+          # 1. Copy all compiled Nuitka dependencies
+          cp -r dist/main.dist/* ../backend/
+
+          # 2. Remove raw Nuitka binary name, replace with sage_backend
+          rm -f ../backend/main ../backend/main.bin 2>/dev/null || true
+          mv dist/main.dist/main.bin ../backend/sage_backend 2>/dev/null || \
+          mv dist/main.dist/main ../backend/sage_backend 2>/dev/null || true
+          chmod 755 ../backend/sage_backend
+
+          # 3. Copy model artifacts alongside the binary
           cp -r artifacts ../backend/ 2>/dev/null || true
           cp sage_model.keras ../backend/ 2>/dev/null || true
           cp *.pkl ../backend/ 2>/dev/null || true
           cp ml_config.py ../backend/ 2>/dev/null || true
 
+          rm -rf dist
           cd ..
 
       # =====================================================
