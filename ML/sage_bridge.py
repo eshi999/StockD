@@ -7,27 +7,15 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+
 def _get_runtime_dir() -> Path:
-    """
-    Works in all environments:
-    - Nuitka standalone binary (Windows, macOS, Linux)
-    - Direct Python execution (dev mode)
-    """
-    if getattr(sys, 'frozen', False):
-        # Nuitka sets sys.frozen = True; executable is the binary itself
-        return Path(sys.executable).resolve().parent
-    else:
-        # Normal Python — use the script's location
-        return Path(__file__).resolve().parent
-
-ML_DIR = _get_runtime_dir()
-sys.path.insert(0, str(ML_DIR))
-
-from ml_config import CALIBRATION_PATH, FEATURE_COLS, SCALER_PATH, WINDOW_SIZE
-
-_model = None
-_scaler = None
-_calibrator = None
+    exe = Path(sys.executable).resolve()
+    exe_dir = exe.parent
+    # In a Nuitka binary, the executable sits next to the model files
+    if (exe_dir / "sage_model.keras").exists() or (exe_dir / "artifacts").exists():
+        return exe_dir
+    # Fallback for dev mode — use the script's own directory
+    return Path(__file__).resolve().parent
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

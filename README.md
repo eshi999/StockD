@@ -55,8 +55,7 @@ Everything runs directly from the application bundle.
 | macOS Apple Silicon | ARM64        | TensorFlow 3.x + tensorflow-metal | Apple Metal Performance Shaders (MPS) |
 | macOS Intel         | x64          | TensorFlow 3.x                    | AVX / AVX2 CPU Instructions           |
 | Linux NVIDIA        | x64          | TensorFlow 3.x + Bundled CUDA     | Self-Contained CUDA / cuDNN Runtime   |
-| Linux Intel         | x64          | TensorFlow 3.x + Intel Extension  | Intel oneDNN Optimizations            |
-| Linux AMD           | x64          | TensorFlow 3.x                    | CPU Vectorization                     |
+| Linux AMD + Intel   | x64          | TensorFlow 3.x + Intel Excention  | CPU Vectorization + Intel oneDNN Optimizations|
 | Linux ARM64         | ARM64        | TensorFlow 3.x                    | AArch64 NEON SIMD                     |
 
 ---
@@ -181,25 +180,15 @@ open /Applications/StockD.app
 
 ### NVIDIA Systems
 
-Large CUDA-enabled packages may be distributed in multiple archive segments.
-
-```bash
-cat StockD-linux-x64-nvidia.deb.part_* \
-> StockD-linux-x64-nvidia.deb
+```text
+StockD-linux-x64-nvidia-1.2.0.deb
+StockD-linux-x64-nvidia-1.2.0.rpm
 ```
 
-### AMD Systems
-
+### Universal (Intel + AMD)
 ```text
-StockD-linux-x64-amd.deb
-StockD-linux-x64-amd.rpm
-```
-
-### Intel Systems
-
-```text
-StockD-linux-x64-intel.deb
-StockD-linux-x64-intel.rpm
+StockD-linux-x64-universal-1.2.0.deb
+StockD-linux-x64-universal-1.2.0.rpm
 ```
 
 ### ARM64 Systems
