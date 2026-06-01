@@ -46,7 +46,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          files: StockD-arm64.dmg*
+          files: StockD-macos-arm64.dmg
 
   build-intel:
     runs-on: macos-26-intel
@@ -87,4 +87,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          files: StockD-x64.dmg*
+          files: StockD-macos-x64.dmg
