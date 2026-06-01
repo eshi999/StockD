@@ -18,10 +18,10 @@ jobs:
         run: |
           import json, os
           matrix = [
-            {"id": "nvidia", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow[and-cuda]", "deb_arch": "amd64", "rpm_arch": "x86_64"},
-            {"id": "intel", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow-intel", "deb_arch": "amd64", "rpm_arch": "x86_64"},
-            {"id": "amd", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow", "deb_arch": "amd64", "rpm_arch": "x86_64"},
-            {"id": "arm64", "os": "ubuntu-24.04-arm", "arch": "arm64", "tf_pkg": "tensorflow", "deb_arch": "arm64", "rpm_arch": "aarch64"}
+            {"id": "linux-x64-nvidia", "os": "self-hosted", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "tf_pkg": "tensorflow[and-cuda]"},
+            {"id": "linux-x64-intel", "os": "self-hosted", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "tf_pkg": "tensorflow intel-extension-for-tensorflow"},
+            {"id": "linux-x64-amd", "os": "self-hosted", "arch": "x64", "deb_arch": "amd64", "rpm_arch": "x86_64", "tf_pkg": "tensorflow"},
+            {"id": "linux-arm64", "os": "ubuntu-24.04-arm", "arch": "arm64", "deb_arch": "arm64", "rpm_arch": "aarch64", "tf_pkg": "tensorflow"}
           ]
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
             f.write(f"matrix<<EOF\n{json.dumps(matrix)}\nEOF\n")
@@ -36,43 +36,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build backend (Nuitka)
+      - name: Build Backend (Nuitka)
         shell: bash
         run: |
-          # Use existing Conda on self-hosted (XPS), pip on cloud ARM64
-          if [ "${{ matrix.os }}" == "self-hosted" ]; then
-            source ~/anaconda3/bin/activate sage_env || source ~/miniconda3/bin/activate sage_env
+          # Use existing Conda 'ml' environment on self-hosted, fallback to pip on cloud ARM64
+          if [[ "${{ matrix.os }}" == "self-hosted" ]]; then
+            source /home/gautam/anaconda3/bin/activate ml
           fi
-          pip install --upgrade pip
+          
+          python -m pip install --upgrade pip
           pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
           
-          # Inject Protobuf Fix
-          echo "import os; os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'" > rthook.py
-          
-          cd ML && python -m nuitka main.py --standalone --output-dir=dist \
-            --jobs=$(nproc) --plugin-enable=anti-bloat --runtime-hook=rthook.py \
+          cd ML
+          python -m nuitka main.py --standalone --output-dir=dist --jobs=$(nproc) --plugin-enable=anti-bloat \
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
           
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend || true
           chmod 755 ../backend/sage_backend
-          rm -rf dist rthook.py
+          rm -rf dist
 
-      - name: Build Flutter & Package
+      - name: Build Flutter GUI
         run: |
           sudo apt-get update && sudo apt-get install -y rpm dpkg-dev
           flutter config --enable-linux-desktop
-          flutter build linux --release
-          
+          flutter build linux --release --build-name=1.2.0
+
+      - name: Inject Backend into Bundle
+        run: |
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
-          PKG="package_root_${{ matrix.id }}"
-          mkdir -p $PKG/usr/lib/stockd/backend $PKG/usr/bin $PKG/usr/share/applications $PKG/usr/share/pixmaps
-          
-          cp -r $BUNDLE/* $PKG/usr/lib/stockd/
-          cp -r backend/* $PKG/usr/lib/stockd/backend/
-          
-          # Create Desktop Entry
-          cat > $PKG/usr/share/applications/stockd.desktop << EOF
+          mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
+          cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
+          chmod 755 $BUNDLE/data/flutter_assets/backend_bundle/sage_backend
+          rm -rf backend
+
+      - name: Create System Desktop Entry File
+        run: |
+          mkdir -p linux_desktop
+          cat > linux_desktop/stockd.desktop << 'EOF'
           [Desktop Entry]
           Name=StockD
           Exec=/usr/bin/stockd
@@ -80,35 +81,83 @@ jobs:
           Type=Application
           Categories=Finance;Education;
           EOF
-          cp assets/images/StockD.png $PKG/usr/share/pixmaps/stockd.png
-          ln -s /usr/lib/stockd/stockd $PKG/usr/bin/stockd
 
-          # Build DEB
-          mkdir -p $PKG/DEBIAN
-          echo -e "Package: stockd-${{ matrix.id }}\nVersion: 1.2.0\nArchitecture: ${{ matrix.deb_arch }}\nMaintainer: StockD\nDescription: AI Stock App\nDepends: libgtk-3-0" > $PKG/DEBIAN/control
-          dpkg-deb --build $PKG StockD-${{ matrix.id }}.deb
+      - name: Build DEB Package
+        run: |
+          BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
+          DEB_ROOT="package_root_${{ matrix.id }}"
+          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/pixmaps
           
-          # Build RPM
-          RPM=$HOME/rpmbuild
-          mkdir -p $RPM/{BUILDROOT,SPECS,RPMS}
-          cp -r $PKG/* $RPM/BUILDROOT/stockd-${{ matrix.id }}.x86_64/
-          echo -e "Name: stockd-${{ matrix.id }}\nVersion: 1.2.0\nRelease: 1\nBuildArch: ${{ matrix.rpm_arch }}\n%files\n/usr" > $RPM/SPECS/stockd.spec
-          rpmbuild -bb --define "_topdir $RPM" $RPM/SPECS/stockd.spec
-          mv $RPM/RPMS/${{ matrix.rpm_arch }}/*.rpm StockD-${{ matrix.id }}.rpm
+          cp -r $BUNDLE/* $DEB_ROOT/usr/lib/StockD-1.2.0/
+          cp assets/images/StockD.png $DEB_ROOT/usr/share/pixmaps/stockd.png
+          cp linux_desktop/stockd.desktop $DEB_ROOT/usr/share/applications/
+          ln -s /usr/lib/StockD-1.2.0/stockd $DEB_ROOT/usr/bin/stockd
+          chmod 755 $DEB_ROOT/usr/lib/StockD-1.2.0/stockd
+          
+          cat > $DEB_ROOT/DEBIAN/control << EOF
+          Package: stockd-${{ matrix.id }}
+          Version: 1.2.0
+          Architecture: ${{ matrix.deb_arch }}
+          Maintainer: Gautam Mahajan
+          Description: AI Stock App Optimized for ${{ matrix.id }}
+          Depends: libgtk-3-0
+          EOF
+          
+          dpkg-deb --root-owner-group --build $DEB_ROOT StockD-${{ matrix.id }}-1.2.0.deb
+          rm -rf $DEB_ROOT
 
-      - name: Split and Upload
+      - name: Build RPM Package
+        run: |
+          BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
+          RPM_ROOT=$HOME/rpmbuild
+          rm -rf $RPM_ROOT
+          mkdir -p $RPM_ROOT/{SPECS,RPMS,BUILDROOT}
+          
+          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}"
+          mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_STAGE/usr/share/applications $RPM_STAGE/usr/share/pixmaps
+          
+          cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
+          cp assets/images/StockD.png $RPM_STAGE/usr/share/pixmaps/stockd.png
+          cp linux_desktop/stockd.desktop $RPM_STAGE/usr/share/applications/
+          ln -s /usr/lib/StockD-1.2.0/stockd $RPM_STAGE/usr/bin/stockd
+          chmod 755 $RPM_STAGE/usr/lib/StockD-1.2.0/stockd
+          
+          cat > $RPM_ROOT/SPECS/StockD.spec << EOF
+          Name: StockD-${{ matrix.id }}
+          Version: 1.2.0
+          Release: 1
+          Summary: StockD AI Stock App Optimized for ${{ matrix.id }}
+          BuildArch: ${{ matrix.rpm_arch }}
+          License: Proprietary
+          %description
+          AI Coach.
+          %files
+          /usr/lib/StockD-1.2.0
+          /usr/bin/stockd
+          /usr/share/applications/stockd.desktop
+          /usr/share/pixmaps/stockd.png
+          EOF
+          
+          rpmbuild -bb --define "__strip /bin/true" --define "_topdir $RPM_ROOT" $RPM_ROOT/SPECS/StockD.spec
+          mv $RPM_ROOT/RPMS/${{ matrix.rpm_arch }}/*.rpm ./StockD-${{ matrix.id }}-1.2.0.rpm
+          rm -rf $RPM_ROOT linux_desktop
+
+      - name: Split Large Binaries
         shell: bash
         run: |
           find . -maxdepth 1 -type f \( -name "*.deb" -o -name "*.rpm" \) -size +1900M | while read f; do
+            echo "Splitting large artifact: $f"
             split -b 1900M "$f" "$f.part_"
             rm "$f"
           done
 
-      - name: Upload Release
+      - name: Upload Directly to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
+          tag_name: "latest"
+          name: "StockD-1.2.0"
           make_latest: true
+          fail_on_unmatched_files: false
           overwrite_files: true
           files: |
             *.deb
