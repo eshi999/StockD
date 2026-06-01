@@ -16,7 +16,7 @@ jobs:
       - id: gen
         shell: python
         run: |
-          import json
+          import os, json
           matrix = [
             {"id": "nvidia", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow[and-cuda]", "python_ver": "3.12"},
             {"id": "intel", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow-intel", "python_ver": "3.12"},
