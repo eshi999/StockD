@@ -8,79 +8,139 @@ permissions:
 
 jobs:
   # ==========================================
-  # JOB 1: SELF-HOSTED RUNNER (X64 TARGETS)
+  # THE DYNAMIC MATRIX GENERATOR
   # ==========================================
-  build-self-hosted:
-    name: Build Self-Hosted x64 (${{ matrix.id }})
-    runs-on: self-hosted
+  setup-matrix:
+    name: Configure Linux Targets
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Generate Matrix JSON
+        id: set-matrix
+        shell: python
+        run: |
+          import json
+          import os
+
+          matrix = []
+          # Consolidated x64 targets running sequentially on your local hardware
+          matrix.append({
+            "id": "linux-x64-universal",
+            "os": "self-hosted",
+            "platform": "linux",
+            "arch": "x64",
+            "deb_arch": "amd64",
+            "rpm_arch": "x86_64",
+            "pkgs": "tensorflow",
+            "jobs": 6
+          })
+          # GitHub-hosted infrastructure targeting cloud ARM64 systems
+          matrix.append({
+            "id": "linux-arm64",
+            "os": "ubuntu-24.04-arm",
+            "platform": "linux",
+            "arch": "arm64",
+            "deb_arch": "arm64",
+            "rpm_arch": "aarch64",
+            "pkgs": "tensorflow",
+            "jobs": 4
+          })
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            f.write(f"matrix={json.dumps(matrix)}\n")
+
+  # ==========================================
+  # THE HEAVY BUILD FACTORY
+  # ==========================================
+  build:
+    name: Build (${{ matrix.id }})
+    needs: setup-matrix
+    if: ${{ needs.setup-matrix.outputs.matrix != '[]' }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - id: "linux-x64-nvidia"
-            arch: "x64"
-            deb_arch: "amd64"
-            rpm_arch: "x86_64"
-            conda_pkgs: "tensorflow[and-cuda]"
-            pip_pkgs: ""
-          - id: "linux-x64-intel"
-            arch: "x64"
-            deb_arch: "amd64"
-            rpm_arch: "x86_64"
-            conda_pkgs: "tensorflow"
-            pip_pkgs: "intel-extension-for-tensorflow[cpu]"
-          - id: "linux-x64-amd"
-            arch: "x64"
-            deb_arch: "amd64"
-            rpm_arch: "x86_64"
-            conda_pkgs: "tensorflow"
-            pip_pkgs: ""
+        include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Build Backend (Nuitka via Conda)
+      # =====================================================
+      # ENV PACKAGING DEPENDENCIES
+      # =====================================================
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
+
+      # =====================================================
+      # COMPILATION ENGINE RUNTIME (CONDA VS PIP PROVISIONING)
+      # =====================================================
+      - name: Build Backend (Nuitka)
         shell: bash
         run: |
           export PIP_REQUIRE_VIRTUALENV=false
           export PYTHONNOUSERSITE=1
-          
-          source /home/gautam/anaconda3/bin/activate ml
-          conda config --env --add channels defaults
-          conda config --env --add channels conda-forge
-          conda config --env --set channel_priority strict
-          
-          # Install base framework dependencies natively through Conda
-          conda install -y nuitka zstandard ordered-set scikit-learn pandas fastapi uvicorn ${{ matrix.conda_pkgs }} -c conda-forge
-          conda install -y yfinance -c conda-forge
-          
-          PYTHON_EXE="/home/gautam/anaconda3/envs/ml/bin/python"
-          if [[ -n "${{ matrix.pip_pkgs }}" ]]; then
-            $PYTHON_EXE -m pip install ${{ matrix.pip_pkgs }}
+
+          if [ "${{ matrix.os }}" == "self-hosted" ]; then
+            echo "Activating Local Workspace Conda Environment..."
+            source /home/gautam/anaconda3/bin/activate ml
+            conda install -y nuitka zstandard ordered-set scikit-learn pandas fastapi uvicorn -c conda-forge
+            conda install -y yfinance -c conda-forge
+            python -m pip install ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3"
+            PY_BIN="python"
+          else
+            echo "Provisioning Cloud-Hosted ARM64 Environment..."
+            python3 -m pip install --upgrade pip
+            pip3 install nuitka zstandard ordered-set ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3" scikit-learn pandas yfinance fastapi uvicorn peewee
+            PY_BIN="python3"
           fi
-          
+
+          # Compile application backend into a standalone native translation unit
           cd ML
-          $PYTHON_EXE -m nuitka main.py --standalone --output-dir=dist --jobs=6 --low-memory --plugin-enable=anti-bloat \
+          $PY_BIN -m nuitka main.py \
+            --standalone \
+            --assume-yes-for-downloads \
+            --output-dir=dist \
+            --jobs=${{ matrix.jobs }} \
+            --low-memory \
+            --plugin-enable=anti-bloat \
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
-          
-          # Safely structure layout assembly and resolve main.bin versus main formats
+
           mkdir -p ../backend
           cp -r dist/main.dist/* ../backend/
           mv ../backend/main.bin ../backend/sage_backend || mv ../backend/main ../backend/sage_backend || true
           chmod 755 ../backend/sage_backend
           rm -rf dist
+          cd ..
 
-      - name: Build Flutter GUI
+      # =====================================================
+      # UNIVERSAL AUTOMATIC DUPLICATE PROTOBUF CLEANUP
+      # =====================================================
+      - name: Purge Duplicate Build Protocol Files
+        shell: bash
+        run: |
+          echo "Scanning for all duplicate protocol definitions..."
+          find backend/ -name "*.proto" | awk -F/ '{print $NF}' | sort | uniq -d | while read -r dup; do
+            echo "Found duplicate profile target: $dup! Purging redundancy..."
+            find backend/ -name "$dup" | tail -n +2 | xargs rm -f
+          done
+
+      # =====================================================
+      # FLUTTER GRAPHICAL INTERFACE ASSEMBLY
+      # =====================================================
+      - name: Compile Flutter GUI
         run: |
           flutter config --enable-linux-desktop
           flutter build linux --release --build-name=1.2.0
 
-      - name: Inject Backend into Bundle
+      - name: Inject SAGE Backend into Asset Bundle
         run: |
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
           cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
           chmod 755 $BUNDLE/data/flutter_assets/backend_bundle/sage_backend
-          rm -rf backend
 
       - name: Create System Desktop Entry File
         run: |
@@ -94,6 +154,9 @@ jobs:
           Categories=Finance;Education;
           EOF
 
+      # =====================================================
+      # NATIVE DEBIAN PACKAGING STRUCTURE (.DEB)
+      # =====================================================
       - name: Build DEB Package
         run: |
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
@@ -111,22 +174,26 @@ jobs:
           Version: 1.2.0
           Architecture: ${{ matrix.deb_arch }}
           Maintainer: Gautam Mahajan
-          Description: AI Stock App Optimized for ${{ matrix.id }}
+          Description: AI Stock App Optimized for Linux
           Depends: libgtk-3-0
           EOF
           
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-${{ matrix.id }}-1.2.0.deb
           rm -rf $DEB_ROOT
 
+      # =====================================================
+      # RED HAT ENTERPRISE PACKAGING STRUCTURE (.RPM)
+      # =====================================================
       - name: Build RPM Package
         run: |
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           RPM_ROOT=$HOME/rpmbuild
+          
+          # Scrub dynamic temporary repositories completely to prevent lock interference
           rm -rf $RPM_ROOT/SPECS $RPM_ROOT/RPMS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
           mkdir -p $RPM_ROOT/{SPECS,RPMS}
           
-          # Target root staging folder definition
-          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-${{ matrix.id }}"
+          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-${{ matrix.id }}-1.2.0-1.%{_arch}"
           mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_STAGE/usr/share/applications $RPM_STAGE/usr/share/pixmaps
           
           cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
@@ -135,9 +202,8 @@ jobs:
           ln -s /usr/lib/StockD-1.2.0/stockd $RPM_STAGE/usr/bin/stockd
           chmod 755 $RPM_STAGE/usr/lib/StockD-1.2.0/stockd
           
-          # FIXED: Concrete physical blueprint file creation to satisfy Fedora package headers
+          # AVOID RPM CHECKS: Write concrete spec file to disk with find-requires blindfolds
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
-          # Force compiler overrides to bypass the 20-minute dependency scanning freeze
           %define _use_internal_dependency_generator 0
           %define __find_requires %{nil}
           %define __find_provides %{nil}
@@ -149,7 +215,7 @@ jobs:
           BuildArch: ${{ matrix.rpm_arch }}
           License: Proprietary
           %description
-          AI Coach.
+          AI Financial Literacy Coach.
           %files
           /usr/lib/StockD-1.2.0
           /usr/bin/stockd
@@ -157,25 +223,33 @@ jobs:
           /usr/share/pixmaps/stockd.png
           EOF
           
+          # Target build root explicitly via strict path declaration flags
           rpmbuild -bb \
             --define "__strip /bin/true" \
             --define "_topdir $RPM_ROOT" \
+            --buildroot "$RPM_STAGE" \
             $RPM_ROOT/SPECS/StockD.spec
             
           mv $RPM_ROOT/RPMS/${{ matrix.rpm_arch }}/*.rpm ./StockD-${{ matrix.id }}-1.2.0.rpm
           
-          # FIXED: Clean transient files safely, avoiding root-locked database locks
+          # Target transient folders safely, bypassing SQLite system database restrictions
           rm -rf $RPM_ROOT/SPECS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
 
+      # =====================================================
+      # HYBRID BINARY SHARDING ENGINE (>1.9GB PROTECTION)
+      # =====================================================
       - name: Split Large Binaries
         shell: bash
         run: |
           find . -maxdepth 1 -type f \( -name "*.deb" -o -name "*.rpm" \) -size +1900M | while read f; do
-            echo "Splitting large artifact: $f"
+            echo "Splitting heavy build target portfolio: $f"
             split -b 1900M "$f" "$f.part_"
             rm "$f"
           done
 
+      # =====================================================
+      # PRODUCTION UPLOAD INFRASTRUCTURE Pipeline
+      # =====================================================
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
@@ -189,149 +263,11 @@ jobs:
             *.rpm
             *.part_*
 
-  # ==========================================
-  # JOB 2: GITHUB-HOSTED CLOUD RUNNER (ARM64)
-  # ==========================================
-  build-cloud-arm64:
-    name: Build Cloud ARM64 (linux-arm64)
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python Runtime Environment
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Build Backend (Nuitka via Pip)
-        shell: bash
+      # =====================================================
+      # LOCAL WORKSPACE DECONTAMINATION GUARDRAIL
+      # =====================================================
+      - name: Purge Residual Build Assets
+        if: always()
         run: |
-          export PIP_REQUIRE_VIRTUALENV=false
-          
-          python -m pip install --upgrade pip
-          python -m pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance peewee
-          
-          cd ML
-          python -m nuitka main.py --standalone --output-dir=dist --jobs=4 --plugin-enable=anti-bloat \
-            --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
-          
-          # Safely structure layout assembly and resolve main.bin versus main formats
-          mkdir -p ../backend
-          cp -r dist/main.dist/* ../backend/
-          mv ../backend/main.bin ../backend/sage_backend || mv ../backend/main ../backend/sage_backend || true
-          chmod 755 ../backend/sage_backend
-          rm -rf dist
-
-      - name: Build Flutter GUI
-        run: |
-          sudo apt-get update && sudo apt-get install -y rpm dpkg-dev
-          flutter config --enable-linux-desktop
-          flutter build linux --release --build-name=1.2.0
-
-      - name: Inject Backend into Bundle
-        run: |
-          BUNDLE="build/linux/arm64/release/bundle"
-          mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
-          cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
-          chmod 755 $BUNDLE/data/flutter_assets/backend_bundle/sage_backend
-          rm -rf backend
-
-      - name: Create System Desktop Entry File
-        run: |
-          mkdir -p linux_desktop
-          cat > linux_desktop/stockd.desktop << 'EOF'
-          [Desktop Entry]
-          Name=StockD
-          Exec=/usr/bin/stockd
-          Icon=stockd
-          Type=Application
-          Categories=Finance;Education;
-          EOF
-
-      - name: Build DEB Package
-        run: |
-          BUNDLE="build/linux/arm64/release/bundle"
-          DEB_ROOT="package_root_linux-arm64"
-          mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/pixmaps
-          
-          cp -r $BUNDLE/* $DEB_ROOT/usr/lib/StockD-1.2.0/
-          cp assets/images/StockD.png $DEB_ROOT/usr/share/pixmaps/stockd.png
-          cp linux_desktop/stockd.desktop $DEB_ROOT/usr/share/applications/
-          ln -s /usr/lib/StockD-1.2.0/stockd $DEB_ROOT/usr/bin/stockd
-          chmod 755 $DEB_ROOT/usr/lib/StockD-1.2.0/stockd
-          
-          cat > $DEB_ROOT/DEBIAN/control << EOF
-          Package: stockd-linux-arm64
-          Version: 1.2.0
-          Architecture: arm64
-          Maintainer: Gautam Mahajan
-          Description: AI Stock App Optimized for linux-arm64
-          Depends: libgtk-3-0
-          EOF
-          
-          dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-arm64-1.2.0.deb
-          rm -rf $DEB_ROOT
-
-      - name: Build RPM Package
-        run: |
-          BUNDLE="build/linux/arm64/release/bundle"
-          RPM_ROOT=$HOME/rpmbuild
-          rm -rf $RPM_ROOT/SPECS $RPM_ROOT/RPMS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
-          mkdir -p $RPM_ROOT/{SPECS,RPMS}
-          
-          RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-linux-arm64-1.2.0-1.aarch64"
-          mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_STAGE/usr/share/applications $RPM_STAGE/usr/share/pixmaps
-          
-          cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
-          cp assets/images/StockD.png $RPM_STAGE/usr/share/pixmaps/stockd.png
-          cp linux_desktop/stockd.desktop $RPM_STAGE/usr/share/applications/
-          ln -s /usr/lib/StockD-1.2.0/stockd $RPM_STAGE/usr/bin/stockd
-          chmod 755 $RPM_STAGE/usr/lib/StockD-1.2.0/stockd
-          
-          # FIXED: Concrete physical blueprint file creation to satisfy Fedora package headers
-          cat > $RPM_ROOT/SPECS/StockD.spec << EOF
-          # Force compiler overrides to bypass the 20-minute dependency scanning freeze
-          %define _use_internal_dependency_generator 0
-          %define __find_requires %{nil}
-          %define __find_provides %{nil}
-
-          Name: StockD-linux-arm64
-          Version: 1.2.0
-          Release: 1
-          Summary: StockD AI Stock App Optimized for linux-arm64
-          BuildArch: aarch64
-          License: Proprietary
-          %description
-          AI Coach.
-          %files
-          /usr/lib/StockD-1.2.0
-          /usr/bin/stockd
-          /usr/share/applications/stockd.desktop
-          /usr/share/pixmaps/stockd.png
-          EOF
-          
-          rpmbuild -bb --define "__strip /bin/true" --define "_topdir $RPM_ROOT" $RPM_ROOT/SPECS/StockD.spec
-          mv $RPM_ROOT/RPMS/aarch64/*.rpm ./StockD-linux-arm64-1.2.0.rpm
-          rm -rf $RPM_ROOT/SPECS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
-
-      - name: Split Large Binaries
-        shell: bash
-        run: |
-          find . -maxdepth 1 -type f \( -name "*.deb" -o -name "*.rpm" \) -size +1900M | while read f; do
-            echo "Splitting large artifact: $f"
-            split -b 1900M "$f" "$f.part_"
-            rm "$f"
-          done
-
-      - name: Upload to GitHub Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "latest"
-          name: "StockD-1.2.0"
-          make_latest: true
-          fail_on_unmatched_files: false
-          overwrite_files: true
-          files: |
-            *.deb
-            *.rpm
-            *.part_*
+          echo "Purging localized binary output tracking matrices..."
+          rm -rf build/ backend/ linux_desktop/ StockD-*.deb StockD-*.rpm 2>/dev/null || true
