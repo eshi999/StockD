@@ -1,19 +1,30 @@
 name: macOS Build
-on: [workflow_dispatch]
-permissions: {contents: write}
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
 env:
   MACOSX_DEPLOYMENT_TARGET: "11.0"
   PYTHON_VERSION: "3.12.10"
   PYTHON_BIN_PATH: "/Library/Frameworks/Python.framework/Versions/3.12/bin"
 
 jobs:
+  # ==========================================
+  # JOB 1: APPLE SILICON M1/M2/M3/M4 (ARM64)
+  # ==========================================
   build-arm64:
+    name: Build Apple Silicon (ARM64)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+      
       - uses: subosito/flutter-action@v2
-        with: {channel: 'stable'}
-      - name: Build ARM64
+        with:
+          channel: 'stable'
+          
+      - name: Build ARM64 Core Architecture
         run: |
           curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
           sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
@@ -21,12 +32,12 @@ jobs:
           pip3 install nuitka zstandard ordered-set tensorflow tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
           
           cd ML && python3 -m nuitka main.py --standalone --assume-yes-for-downloads --output-dir=../dist_arm64 --jobs=4 --plugin-enable=anti-bloat --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite --include-package=tensorflow
-          
-          # Dynamic binary detection
-          if [ -f "../dist_arm64/main.dist/main" ]; then
-            BINARY="../dist_arm64/main.dist/main"
-          elif [ -f "../dist_arm64/main.dist/main.bin" ]; then
-            BINARY="../dist_arm64/main.dist/main.bin"
+          cd ..
+
+          if [ -f "dist_arm64/main.dist/main" ]; then
+            BINARY="dist_arm64/main.dist/main"
+          elif [ -f "dist_arm64/main.dist/main.bin" ]; then
+            BINARY="dist_arm64/main.dist/main.bin"
           else
             echo "Error: Nuitka binary not found!"
             exit 1
@@ -35,26 +46,38 @@ jobs:
           chmod +x "$BINARY"
           flutter build macos --release
           DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
-          mkdir -p "$DEST" && cp -r ../dist_arm64/main.dist/* "$DEST"
+          mkdir -p "$DEST" && cp -r dist_arm64/main.dist/* "$DEST"
           
-          # Rename to sage_backend
           mv "$BINARY" "$DEST/sage_backend"
+          chmod 755 "$DEST/sage_backend"
           
-          hdiutil create -volname "StockD-arm64" -srcfolder "build/macos/Build/Products/Release/StockD.app" -ov -format UDZO "StockD-arm64.dmg"
-          find . -name "StockD-arm64.dmg" -size +1900M -exec split -b 1900m {} {}.part_ \;
-      - name: Release Asset
+          hdiutil create -volname "StockD-mac-arm" -srcfolder "build/macos/Build/Products/Release/StockD.app" -ov -format UDZO "StockD-mac-arm.dmg"
+
+      - name: Deploy ARM64 to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          files: StockD-mac-arm.dmg
+          name: "StockD-1.2.0"
+          make_latest: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            StockD-mac-arm.dmg
 
+  # ==========================================
+  # JOB 2: OLD INTEL MAC ARCHITECTURES (X64)
+  # ==========================================
   build-intel:
+    name: Build Legacy Mac (Intel x64)
     runs-on: macos-26-intel
     steps:
       - uses: actions/checkout@v4
+      
       - uses: subosito/flutter-action@v2
-        with: {channel: 'stable'}
-      - name: Build Intel
+        with:
+          channel: 'stable'
+          
+      - name: Build Intel Core Architecture
         run: |
           curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
           sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
@@ -62,12 +85,12 @@ jobs:
           pip3 install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy --break-system-packages
           
           cd ML && python3 -m nuitka main.py --standalone --assume-yes-for-downloads --output-dir=../dist_intel --jobs=4 --plugin-enable=anti-bloat --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite --include-package=tensorflow
-          
-          # Dynamic binary detection
-          if [ -f "../dist_intel/main.dist/main" ]; then
-            BINARY="../dist_intel/main.dist/main"
-          elif [ -f "../dist_intel/main.dist/main.bin" ]; then
-            BINARY="../dist_intel/main.dist/main.bin"
+          cd ..
+
+          if [ -f "dist_intel/main.dist/main" ]; then
+            BINARY="dist_intel/main.dist/main"
+          elif [ -f "dist_intel/main.dist/main.bin" ]; then
+            BINARY="dist_intel/main.dist/main.bin"
           else
             echo "Error: Nuitka binary not found!"
             exit 1
@@ -76,15 +99,20 @@ jobs:
           chmod +x "$BINARY"
           flutter build macos --release
           DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
-          mkdir -p "$DEST" && cp -r ../dist_intel/main.dist/* "$DEST"
+          mkdir -p "$DEST" && cp -r dist_intel/main.dist/* "$DEST"
           
-          # Rename to sage_backend
           mv "$BINARY" "$DEST/sage_backend"
+          chmod 755 "$DEST/sage_backend"
           
-          hdiutil create -volname "StockD-x64" -srcfolder "build/macos/Build/Products/Release/StockD.app" -ov -format UDZO "StockD-x64.dmg"
-          find . -name "StockD-x64.dmg" -size +1900M -exec split -b 1900m {} {}.part_ \;
-      - name: Release Asset
+          hdiutil create -volname "StockD-mac-intel" -srcfolder "build/macos/Build/Products/Release/StockD.app" -ov -format UDZO "StockD-mac-intel.dmg"
+
+      - name: Deploy Intel to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          files: StockD-mac-intel.dmg
+          name: "StockD-1.2.0"
+          make_latest: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            StockD-mac-intel.dmg
