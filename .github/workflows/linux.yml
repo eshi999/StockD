@@ -1,4 +1,4 @@
-name: Linux Build
+name: StockD Linux Build Pipeline
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
       - id: gen
         shell: python
         run: |
-          import os, json
+          import json, os
           matrix = [
             {"id": "nvidia", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow[and-cuda]", "python_ver": "3.12"},
             {"id": "intel", "os": "self-hosted", "arch": "x64", "tf_pkg": "tensorflow-intel", "python_ver": "3.12"},
@@ -37,6 +37,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Python
+        if: runner.os != 'self-hosted'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python_ver }}
@@ -46,10 +47,11 @@ jobs:
         run: |
           # Use existing Conda on self-hosted, fallback to pip on cloud ARM64
           if [ "${{ matrix.os }}" == "self-hosted" ]; then
-            conda activate sage_env
+            source ~/anaconda3/bin/activate sage_env || source ~/miniconda3/bin/activate sage_env
           fi
           pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
           
+          # Nuitka Compile
           cd ML && python -m nuitka main.py --standalone --output-dir=dist \
             --jobs=$(nproc) --plugin-enable=anti-bloat \
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
@@ -72,6 +74,7 @@ jobs:
           cp -r backend/* $PKG/usr/lib/stockd/backend/
           chmod 755 $PKG/usr/lib/stockd/backend/sage_backend
           
+          # Create Desktop Entry
           cat > $PKG/usr/share/applications/stockd.desktop << EOF
           [Desktop Entry]
           Name=StockD
@@ -83,10 +86,12 @@ jobs:
           cp assets/images/StockD.png $PKG/usr/share/pixmaps/stockd.png
           ln -s /usr/lib/stockd/stockd $PKG/usr/bin/stockd
 
+          # Build DEB
           mkdir -p $PKG/DEBIAN
           echo -e "Package: stockd-${{ matrix.id }}\nVersion: 1.2.0\nArchitecture: ${{ matrix.arch == 'arm64' && 'arm64' || 'amd64' }}\nMaintainer: StockD\nDescription: AI Stock App\nDepends: libgtk-3-0" > $PKG/DEBIAN/control
           dpkg-deb --build $PKG StockD-${{ matrix.id }}.deb
           
+          # Build RPM
           RPM=$HOME/rpmbuild
           mkdir -p $RPM/{BUILDROOT,SPECS,RPMS}
           cp -r $PKG/* $RPM/BUILDROOT/stockd-${{ matrix.id }}.x86_64/
@@ -97,7 +102,6 @@ jobs:
       - name: Split and Upload
         shell: bash
         run: |
-          # Split any file exceeding 1.9GB into parts
           find . -maxdepth 1 -type f \( -name "*.deb" -o -name "*.rpm" \) -size +1900M | while read f; do
             split -b 1900M "$f" "$f.part_"
             rm "$f"
