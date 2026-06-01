@@ -36,19 +36,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Backend (Nuitka)
+      - name: Build Backend (Nuitka via Conda)
         shell: bash
         run: |
-          # Use existing Conda 'ml' environment on self-hosted, fallback to pip on cloud ARM64
+          export PIP_REQUIRE_VIRTUALENV=false
+          
           if [[ "${{ matrix.os }}" == "self-hosted" ]]; then
             source /home/gautam/anaconda3/bin/activate ml
+            conda config --env --add channels defaults
+            conda config --env --add channels conda-forge
+            conda config --env --set channel_priority strict
+            
+            conda install -y nuitka zstandard ordered-set scikit-learn pandas fastapi uvicorn ${{ matrix.tf_pkg }} -c conda-forge
+            conda install -y yfinance -c conda-forge
+            
+            PYTHON_EXE="/home/gautam/anaconda3/envs/ml/bin/python"
+          else
+            PYTHON_EXE="python"
+            $PYTHON_EXE -m pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
           fi
           
-          python -m pip install --upgrade pip
-          pip install nuitka zstandard ordered-set ${{ matrix.tf_pkg }} fastapi uvicorn pandas scikit-learn yfinance
-          
           cd ML
-          python -m nuitka main.py --standalone --output-dir=dist --jobs=$(nproc) --plugin-enable=anti-bloat \
+          $PYTHON_EXE -m nuitka main.py --standalone --output-dir=dist --jobs=$(nproc) --plugin-enable=anti-bloat \
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
           
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
@@ -106,22 +115,25 @@ jobs:
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-${{ matrix.id }}-1.2.0.deb
           rm -rf $DEB_ROOT
 
-      - name: Build RPM Package
+      - name: Build RPM Package (With Integrated Desktop Entry)
         run: |
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           RPM_ROOT=$HOME/rpmbuild
           rm -rf $RPM_ROOT
           mkdir -p $RPM_ROOT/{SPECS,RPMS,BUILDROOT}
           
+          # 1. Map dynamic root folder tracking coordinates 
           RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-1.2.0-1.${{ matrix.rpm_arch }}"
           mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_STAGE/usr/share/applications $RPM_STAGE/usr/share/pixmaps
           
+          # 2. Inject application bundle and shortcut systems directly into the staging workspace
           cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
           cp assets/images/StockD.png $RPM_STAGE/usr/share/pixmaps/stockd.png
           cp linux_desktop/stockd.desktop $RPM_STAGE/usr/share/applications/
           ln -s /usr/lib/StockD-1.2.0/stockd $RPM_STAGE/usr/bin/stockd
           chmod 755 $RPM_STAGE/usr/lib/StockD-1.2.0/stockd
           
+          # 3. Compile layout metadata to tell rpmbuild what paths it is allowed to parse
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
           Name: StockD-${{ matrix.id }}
           Version: 1.2.0
