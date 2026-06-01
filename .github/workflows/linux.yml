@@ -122,8 +122,8 @@ jobs:
         run: |
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           RPM_ROOT=$HOME/rpmbuild
-          rm -rf $RPM_ROOT
-          mkdir -p $RPM_ROOT/{SPECS,RPMS,BUILDROOT,BUILD,SOURCES}
+          rm -rf $RPM_ROOT/SPECS $RPM_ROOT/RPMS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
+          mkdir -p $RPM_ROOT/{SPECS,RPMS}
           
           # Target root staging folder definition
           RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-${{ matrix.id }}"
@@ -135,7 +135,13 @@ jobs:
           ln -s /usr/lib/StockD-1.2.0/stockd $RPM_STAGE/usr/bin/stockd
           chmod 755 $RPM_STAGE/usr/lib/StockD-1.2.0/stockd
           
+          # FIXED: Concrete physical blueprint file creation to satisfy Fedora package headers
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
+          # Force compiler overrides to bypass the 20-minute dependency scanning freeze
+          %define _use_internal_dependency_generator 0
+          %define __find_requires %{nil}
+          %define __find_provides %{nil}
+
           Name: StockD-${{ matrix.id }}
           Version: 1.2.0
           Release: 1
@@ -151,15 +157,15 @@ jobs:
           /usr/share/pixmaps/stockd.png
           EOF
           
-          # FIXED: Forced explicit buildroot absolute flag parameters to lock path evaluations
           rpmbuild -bb \
             --define "__strip /bin/true" \
             --define "_topdir $RPM_ROOT" \
-            --buildroot "$RPM_STAGE" \
             $RPM_ROOT/SPECS/StockD.spec
             
           mv $RPM_ROOT/RPMS/${{ matrix.rpm_arch }}/*.rpm ./StockD-${{ matrix.id }}-1.2.0.rpm
-          rm -rf $RPM_ROOT linux_desktop
+          
+          # FIXED: Clean transient files safely, avoiding root-locked database locks
+          rm -rf $RPM_ROOT/SPECS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
 
       - name: Split Large Binaries
         shell: bash
@@ -270,8 +276,8 @@ jobs:
         run: |
           BUNDLE="build/linux/arm64/release/bundle"
           RPM_ROOT=$HOME/rpmbuild
-          rm -rf $RPM_ROOT
-          mkdir -p $RPM_ROOT/{SPECS,RPMS,BUILDROOT}
+          rm -rf $RPM_ROOT/SPECS $RPM_ROOT/RPMS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
+          mkdir -p $RPM_ROOT/{SPECS,RPMS}
           
           RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-linux-arm64-1.2.0-1.aarch64"
           mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_STAGE/usr/share/applications $RPM_STAGE/usr/share/pixmaps
@@ -282,7 +288,13 @@ jobs:
           ln -s /usr/lib/StockD-1.2.0/stockd $RPM_STAGE/usr/bin/stockd
           chmod 755 $RPM_STAGE/usr/lib/StockD-1.2.0/stockd
           
+          # FIXED: Concrete physical blueprint file creation to satisfy Fedora package headers
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
+          # Force compiler overrides to bypass the 20-minute dependency scanning freeze
+          %define _use_internal_dependency_generator 0
+          %define __find_requires %{nil}
+          %define __find_provides %{nil}
+
           Name: StockD-linux-arm64
           Version: 1.2.0
           Release: 1
@@ -300,7 +312,7 @@ jobs:
           
           rpmbuild -bb --define "__strip /bin/true" --define "_topdir $RPM_ROOT" $RPM_ROOT/SPECS/StockD.spec
           mv $RPM_ROOT/RPMS/aarch64/*.rpm ./StockD-linux-arm64-1.2.0.rpm
-          rm -rf $RPM_ROOT linux_desktop
+          rm -rf $RPM_ROOT/SPECS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
 
       - name: Split Large Binaries
         shell: bash
