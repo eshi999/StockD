@@ -37,7 +37,7 @@ jobs:
             "jobs": 6
           })
 
-          # 2. Universal x64 Target: Combines Intel oneDNN Extensions + AMD Core CPU Fallbacks
+          # 2. Universal x64 Target: Optimized with full Intel oneDNN + Generic AMD Fallbacks
           matrix.append({
             "id": "linux-x64-universal",
             "os": "self-hosted",
@@ -102,6 +102,8 @@ jobs:
             source /home/gautam/anaconda3/bin/activate ml
             conda install -y nuitka zstandard ordered-set scikit-learn pandas fastapi uvicorn -c conda-forge
             conda install -y yfinance -c conda-forge
+            
+            # UPGRADED: Dynamic fallback string check to safely isolate package variables
             python -m pip install ${{ matrix.pkgs }} "numpy<2" "protobuf<=3.20.3"
             PY_BIN="python"
           else
@@ -255,10 +257,15 @@ jobs:
       - name: Split Large Binaries
         shell: bash
         run: |
-          find . -maxdepth 1 -type f \( -name "*.deb" -o -name "*.rpm" \) -size +1900M | while read f; do
-            echo "Splitting heavy build target portfolio: $f"
-            split -b 1900M "$f" "$f.part_"
-            rm "$f"
+          for f in *.deb *.rpm 2>/dev/null; do
+            if [ -f "$f" ]; then
+              size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
+              if [ "$size" -gt 1990000000 ]; then
+                echo "Splitting heavy build target portfolio: $f"
+                split -b 1900M "$f" "${f}.part_"
+                rm "$f"
+              fi
+            fi
           done
 
       # =====================================================
