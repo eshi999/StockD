@@ -57,7 +57,7 @@ jobs:
           fi
           
           cd ML
-          $PYTHON_EXE -m nuitka main.py --standalone --output-dir=dist --jobs=$(nproc) --plugin-enable=anti-bloat \
+          $PYTHON_EXE -m nuitka main.py --standalone --output-dir=dist --jobs=6 --low-memory --plugin-enable=anti-bloat \
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
           
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
