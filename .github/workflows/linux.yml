@@ -216,9 +216,9 @@ jobs:
           chmod 755 $RPM_STAGE/usr/lib/StockD-1.2.0/stockd
           
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
-          %define _use_internal_dependency_generator 0
-          %define __find_requires %{nil}
-          %define __find_provides %{nil}
+          %global __requires_exclude .*
+          %global __provides_exclude .*
+          %global _missing_build_ids_terminate_build 0
 
           Name: StockD-${{ matrix.id }}
           Version: 1.2.0
@@ -236,6 +236,7 @@ jobs:
           EOF
           
           rpmbuild -bb \
+            --nodeps \
             --define "__strip /bin/true" \
             --define "_topdir $RPM_ROOT" \
             --buildroot "$RPM_STAGE" \
