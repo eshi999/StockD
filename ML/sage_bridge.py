@@ -7,7 +7,20 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-ML_DIR = Path(__file__).resolve().parent
+def _get_runtime_dir() -> Path:
+    """
+    Works in all environments:
+    - Nuitka standalone binary (Windows, macOS, Linux)
+    - Direct Python execution (dev mode)
+    """
+    if getattr(sys, 'frozen', False):
+        # Nuitka sets sys.frozen = True; executable is the binary itself
+        return Path(sys.executable).resolve().parent
+    else:
+        # Normal Python — use the script's location
+        return Path(__file__).resolve().parent
+
+ML_DIR = _get_runtime_dir()
 sys.path.insert(0, str(ML_DIR))
 
 from ml_config import CALIBRATION_PATH, FEATURE_COLS, SCALER_PATH, WINDOW_SIZE
@@ -22,7 +35,6 @@ _calibrator = None
 
 def safe_float(val, default: float = 0.0) -> float:
     try:
-        # Handle cases where pandas returns a series or array with one value
         if hasattr(val, "item"):
             val = val.item()
         v = float(val)
@@ -43,30 +55,22 @@ def safe_round(val, digits: int = 2, default: float = 0.0) -> float:
     return round(v, digits)
 
 
-# ── Technical Indicator Calculators (Replacing Local File Precomputations) ───
+# ── Technical Indicator Calculators ──────────────────────────────────────────
 
 
 def _compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Computes technical indicators dynamically on memory-resident pandas frames.
-    Replicates original pipeline feature engineering metrics cleanly.
-    """
     df = df.copy()
 
-    # 1. Simple Moving Averages
     df["SMA_50"] = df["Close"].rolling(window=50, min_periods=1).mean()
     df["SMA_200"] = df["Close"].rolling(window=200, min_periods=1).mean()
 
-    # 2. Relative Strength Index (RSI 14)
     delta = df["Close"].diff()
     gain = delta.clip(lower=0).rolling(window=14, min_periods=1).mean()
     loss = (-delta.clip(upper=0)).rolling(window=14, min_periods=1).mean()
     rs = gain / (loss + 1e-9)
     df["RSI_14"] = 100 - (100 / (1 + rs))
-    # Backfill initial NaN row to avoid array fragmentation issues
     df["RSI_14"] = df["RSI_14"].fillna(50.0)
 
-    # 3. Returns and Volatility Calculations
     df["Daily_Return"] = df["Close"].pct_change().fillna(0.0)
     df["Volatility_20"] = (
         df["Daily_Return"].rolling(window=20, min_periods=1).std().fillna(0.0)
@@ -76,19 +80,13 @@ def _compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _fetch_live_dataframe(ticker: str, period: str = "2y") -> pd.DataFrame:
-    """
-    Safe proxy loop that downloads ticker metrics on demand via yfinance APIs.
-    Removes disk space requirements and legal redistribution grey areas.
-    """
     try:
         clean_symbol = ticker.strip().upper()
-        # Download data silently without verbose log pollution
         df = yf.download(clean_symbol, period=period, auto_adjust=True, progress=False)
 
         if df.empty:
             return pd.DataFrame()
 
-        # Clean up Pandas MultiIndex columns if present in current yfinance version structures
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
@@ -167,25 +165,12 @@ def load_model() -> bool:
 
 
 def get_market_snapshot() -> list:
-    """
-    Builds a high-conviction live snapshot of prominent S&P bellwethers dynamically.
-    Completely decoupled from the static historical storage subfolders.
-    """
     core_anchors = [
-        "SPY",
-        "AAPL",
-        "MSFT",
-        "GOOGL",
-        "AMZN",
-        "NVDA",
-        "META",
-        "TSLA",
-        "JPM",
-        "V",
+        "SPY", "AAPL", "MSFT", "GOOGL", "AMZN",
+        "NVDA", "META", "TSLA", "JPM", "V",
     ]
     results = []
 
-    # Download batch matrix to limit request connection overhead times
     try:
         batch_df = yf.download(
             core_anchors, period="5d", auto_adjust=True, progress=False
@@ -235,17 +220,12 @@ def get_market_snapshot() -> list:
 
 
 def get_stock_history(ticker: str, timeframe: str = "1Y") -> dict:
-    """
-    Downloads historical timeline configurations on the fly. Matches key bindings
-    and array names exactly with Flutter fl_chart serializations.
-    """
     df = _fetch_live_dataframe(ticker, period="2y")
     if df.empty:
         return {"error": "no_local_data"}
 
     n_rows = {"1D": 2, "1W": 5, "1M": 21, "3M": 63, "1Y": 252}.get(timeframe, 252)
 
-    # Ensure dataframe limits don't overflow smaller asset profiles
     df_slice = df.tail(n_rows).reset_index(drop=True)
     df_1y = df.tail(252)
 
@@ -308,7 +288,7 @@ def get_stock_history(ticker: str, timeframe: str = "1Y") -> dict:
     }
 
 
-# ── Internal Prediction (used only by explain, never exposed to Flutter) ──────
+# ── Internal Prediction ───────────────────────────────────────────────────────
 
 
 def _run_model(ticker: str) -> dict:
@@ -329,7 +309,6 @@ def _run_model(ticker: str) -> dict:
 
     outputs = _model.predict(seq, verbose=0)
 
-    # SAFE TENSOR SHAPE UNWRAPPING: Prevents invalid index crashes on multi-dimensional scalar structures
     if hasattr(outputs, "flatten"):
         raw_prob = float(outputs.flatten()[0])
     else:
@@ -428,7 +407,6 @@ def chat(message: str, history: list[dict]) -> str:
     ticker_data = None
     found_ticker = None
 
-    # Parse and validate tickers directly using the real API layer instead of a directory trace
     for word in words:
         clean = word.strip("?.,!()\"'")
         if 1 <= len(clean) <= 5 and clean.isalpha():
@@ -542,13 +520,7 @@ def chat(message: str, history: list[dict]) -> str:
 
     # ── Advice guard ──────────────────────────────────────────────────────────
     advice_words = [
-        "buy",
-        "sell",
-        "invest",
-        "should i",
-        "recommend",
-        "worth it",
-        "good stock",
+        "buy", "sell", "invest", "should i", "recommend", "worth it", "good stock",
     ]
     if any(w in msg_lower for w in advice_words):
         return (
