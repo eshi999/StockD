@@ -10,7 +10,7 @@ on:
         type: choice
         options:
           - all
-          - linux-x64-generic
+          - linux-x64-universal
           - linux-x64-nvidia
           - linux-arm64
 
@@ -26,8 +26,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: linux-x64-generic
-            os: ubuntu-latest
+          - id: linux-x64-universal
+            os: self-hosted
             arch: x64
             deb_arch: amd64
             rpm_arch: x86_64
@@ -49,7 +49,7 @@ jobs:
             deb_arch: arm64
             rpm_arch: aarch64
             pkgs: "tensorflow"
-            jobs: 4
+            jobs: 2
 
     steps:
       - name: Skip unwanted targets
