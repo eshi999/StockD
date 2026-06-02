@@ -34,7 +34,7 @@ jobs:
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cpu
           TF_ROOT=$(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__))")
-          
+
           cd ML
           python -m nuitka main.py --standalone --lto=no --assume-yes-for-downloads --output-dir=dist --jobs=6 --low-memory --include-package=tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT" --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
@@ -54,13 +54,14 @@ jobs:
           cp -r $BUNDLE/* $DEB_ROOT/usr/lib/StockD-1.2.0/
           ln -s /usr/lib/StockD-1.2.0/sage_backend $DEB_ROOT/usr/bin/stockd
           cp $BUNDLE/stockd.desktop $DEB_ROOT/usr/share/applications/
-          cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
+          [ -f assets/images/stockd.png ] && cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
+          
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd-linux-$JOB_ID
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
-          Description: StockD AI
+          Description: StockD AI Application
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-$JOB_ID-1.2.0.deb
 
@@ -72,7 +73,10 @@ jobs:
           Version: 1.2.0
           Release: 1
           Summary: StockD AI
+          License: Proprietary
           %global __requires_exclude_from ^/usr/lib/StockD-1.2.0/.*$
+          %description
+          StockD AI application.
           %files
           /usr/lib/StockD-1.2.0
           EOF
@@ -110,7 +114,7 @@ jobs:
           conda activate StockD_build_cuda
           export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(find /home/gautam/miniconda3/envs/StockD_build_cuda -name "lib" | grep "nvidia" | tr '\n' ':')
           TF_ROOT=$(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__))")
-
+          
           cd ML
           python -m nuitka main.py --standalone --lto=no --assume-yes-for-downloads --output-dir=dist --jobs=6 --low-memory --include-package=tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT" --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
@@ -130,13 +134,14 @@ jobs:
           cp -r $BUNDLE/* $DEB_ROOT/usr/lib/StockD-1.2.0/
           ln -s /usr/lib/StockD-1.2.0/sage_backend $DEB_ROOT/usr/bin/stockd
           cp $BUNDLE/stockd.desktop $DEB_ROOT/usr/share/applications/
-          cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
+          [ -f assets/images/stockd.png ] && cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
+          
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd-linux-$JOB_ID
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
-          Description: StockD AI
+          Description: StockD AI Application
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-$JOB_ID-1.2.0.deb
 
@@ -148,7 +153,10 @@ jobs:
           Version: 1.2.0
           Release: 1
           Summary: StockD AI
+          License: Proprietary
           %global __requires_exclude_from ^/usr/lib/StockD-1.2.0/.*$
+          %description
+          StockD AI application.
           %files
           /usr/lib/StockD-1.2.0
           EOF
@@ -207,13 +215,14 @@ jobs:
           cp -r $BUNDLE/* $DEB_ROOT/usr/lib/StockD-1.2.0/
           ln -s /usr/lib/StockD-1.2.0/sage_backend $DEB_ROOT/usr/bin/stockd
           cp $BUNDLE/stockd.desktop $DEB_ROOT/usr/share/applications/
-          cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
+          [ -f assets/images/stockd.png ] && cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
+          
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd-linux-$JOB_ID
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
-          Description: StockD AI
+          Description: StockD AI Application
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-$JOB_ID-1.2.0.deb
           
@@ -225,7 +234,10 @@ jobs:
           Version: 1.2.0
           Release: 1
           Summary: StockD AI
+          License: Proprietary
           %global __requires_exclude_from ^/usr/lib/StockD-1.2.0/.*$
+          %description
+          StockD AI application.
           %files
           /usr/lib/StockD-1.2.0
           EOF
