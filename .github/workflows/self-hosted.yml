@@ -1,4 +1,4 @@
-name: Linux Build
+name: Linux Build - Self-Hosted
 
 on:
   workflow_dispatch:
