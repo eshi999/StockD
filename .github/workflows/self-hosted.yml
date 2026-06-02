@@ -33,9 +33,8 @@ jobs:
           pip install -U pip nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas tensorflow intel-extension-for-tensorflow
           
           TF_ROOT=$(python3 -c "import tensorflow as tf, os; print(os.path.dirname(tf.__file__))")
-          ITEX_ROOT=$(python3 -c "import intel_extension_for_tensorflow as itex; import os; print(os.path.dirname(itex.__file__))")
           
-          cd ML && python3 -m nuitka main.py --standalone --lto=no --output-dir=dist --include-package=tensorflow --include-package=intel_extension_for_tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT" --include-plugin-directory="$ITEX_ROOT" --prefer-source-code
+          cd ML && python3 -m nuitka main.py --standalone --lto=no --output-dir=dist --include-package=tensorflow --include-package=intel_extension_for_tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT"  --prefer-source-code
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/ && mv ../backend/main ../backend/sage_backend 2>/dev/null || true
           chmod +x ../backend/sage_backend && cd ..
           
