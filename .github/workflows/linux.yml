@@ -33,9 +33,10 @@ jobs:
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cpu
+          TF_ROOT="/home/gautam/miniconda3/envs/StockD_build_/lib/python3.12/site-packages/tensorflow"
 
           cd ML
-          python -m nuitka main.py --standalone --lto=no --assume-yes-for-downloads --output-dir=dist --jobs=6 --low-memory --include-package=tensorflow --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
+          python -m nuitka main.py --standalone --lto=no --assume-yes-for-downloads --output-dir=dist --jobs=6 --low-memory --include-package=tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT" --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
           chmod 755 ../backend/sage_backend
@@ -46,7 +47,6 @@ jobs:
           flutter build linux --release --build-name=1.2.0
           BUNDLE="build/linux/$ARCH/release/bundle"
           mkdir -p $BUNDLE/data/flutter_assets/backend_bundle && cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
-
           echo -e "[Desktop Entry]\nName=StockD\nExec=/usr/bin/stockd\nIcon=stockd\nType=Application\nCategories=Finance;Utility;" > $BUNDLE/stockd.desktop
 
           DEB_ROOT="pkg_deb"
@@ -55,7 +55,6 @@ jobs:
           ln -s /usr/lib/StockD-1.2.0/sage_backend $DEB_ROOT/usr/bin/stockd
           cp $BUNDLE/stockd.desktop $DEB_ROOT/usr/share/applications/
           cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
-          
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd-linux-$JOB_ID
           Version: 1.2.0
@@ -110,9 +109,10 @@ jobs:
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cuda
           export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(find /home/gautam/miniconda3/envs/StockD_build_cuda -name "lib" | grep "nvidia" | tr '\n' ':')
-          
+          TF_ROOT="/home/gautam/miniconda3/envs/StockD_build_cuda/lib/python3.12/site-packages/tensorflow"
+
           cd ML
-          python -m nuitka main.py --standalone --lto=no --assume-yes-for-downloads --output-dir=dist --jobs=6 --low-memory --include-package=tensorflow --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
+          python -m nuitka main.py --standalone --lto=no --assume-yes-for-downloads --output-dir=dist --jobs=6 --low-memory --include-package=tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT" --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
           chmod 755 ../backend/sage_backend
@@ -123,7 +123,6 @@ jobs:
           flutter build linux --release --build-name=1.2.0
           BUNDLE="build/linux/$ARCH/release/bundle"
           mkdir -p $BUNDLE/data/flutter_assets/backend_bundle && cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
-
           echo -e "[Desktop Entry]\nName=StockD\nExec=/usr/bin/stockd\nIcon=stockd\nType=Application\nCategories=Finance;Utility;" > $BUNDLE/stockd.desktop
 
           DEB_ROOT="pkg_deb"
@@ -132,7 +131,6 @@ jobs:
           ln -s /usr/lib/StockD-1.2.0/sage_backend $DEB_ROOT/usr/bin/stockd
           cp $BUNDLE/stockd.desktop $DEB_ROOT/usr/share/applications/
           cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
-          
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd-linux-$JOB_ID
           Version: 1.2.0
@@ -202,7 +200,6 @@ jobs:
           flutter build linux --release --build-name=1.2.0
           BUNDLE="build/linux/arm64/release/bundle"
           mkdir -p $BUNDLE/data/flutter_assets/backend_bundle && cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
-          
           echo -e "[Desktop Entry]\nName=StockD\nExec=/usr/bin/stockd\nIcon=stockd\nType=Application\nCategories=Finance;Utility;" > $BUNDLE/stockd.desktop
 
           DEB_ROOT="pkg_deb"
@@ -211,7 +208,6 @@ jobs:
           ln -s /usr/lib/StockD-1.2.0/sage_backend $DEB_ROOT/usr/bin/stockd
           cp $BUNDLE/stockd.desktop $DEB_ROOT/usr/share/applications/
           cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
-          
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd-linux-$JOB_ID
           Version: 1.2.0
