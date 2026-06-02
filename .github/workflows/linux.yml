@@ -44,7 +44,7 @@ jobs:
           pip3 install --break-system-packages nuitka zstandard ordered-set $PKGS scikit-learn pandas yfinance fastapi uvicorn
           cd ML
           # Set the environment variable just for this command
-          CFLAGS="-mcmodel=large" python3 -m nuitka main.py \
+          CFLAGS="-mcmodel=medium -fPIC" python3 -m nuitka main.py \
             --standalone \
             --plugin-enable=tensorflow \
             --plugin-enable=anti-bloat \
