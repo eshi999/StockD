@@ -92,7 +92,7 @@ jobs:
         with:
           tag_name: latest
           make_latest: true
-          overwrite: true
+          overwrite_files: true
           fail_on_unmatched_files: true
           files: |
             *.deb
@@ -172,7 +172,7 @@ jobs:
         with:
           tag_name: latest
           make_latest: true
-          overwrite: true
+          overwrite_files: true
           fail_on_unmatched_files: true
           files: |
             *.deb
@@ -253,7 +253,7 @@ jobs:
         with:
           tag_name: latest
           make_latest: true
-          overwrite: true
+          overwrite_files: true
           fail_on_unmatched_files: true
           files: |
             *.deb
