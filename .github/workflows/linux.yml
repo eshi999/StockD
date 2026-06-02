@@ -246,8 +246,7 @@ jobs:
           sudo pip3 install --break-system-packages --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
           
           cd ML
-          export CFLAGS="-mlong-calls -fPIC"
-          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=2 --plugin-enable=anti-bloat --include-package=tensorflow
+          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=2 --plugin-enable=anti-bloat --include-package=tensorflow --clang
           cd ..
           
           mkdir -p backend && cp -r ML/dist/main.dist/* backend/
