@@ -34,7 +34,6 @@ jobs:
             pkgs: "tensorflow"
             jobs: 4
 
-          # Self-hosted (requested)
           - id: linux-x64-nvidia
             os: self-hosted
             arch: x64
