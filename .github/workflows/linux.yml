@@ -33,7 +33,7 @@ jobs:
 
           # Build Backend
           cd ML
-          python -m nuitka main.py \
+          /home/gautam/miniconda3/envs/StockD_build_cpu/bin/python -m nuitka main.py \
             --standalone \
             --lto=no \
             --assume-yes-for-downloads \
@@ -157,7 +157,7 @@ jobs:
 
           # Build Backend
           cd ML
-          python -m nuitka main.py \
+          /home/gautam/miniconda3/envs/StockD_build_cpu/bin/python -m nuitka main.py \
             --standalone \
             --lto=no \
             --assume-yes-for-downloads \
