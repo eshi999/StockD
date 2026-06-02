@@ -24,15 +24,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build and Package Backend (Nuitka)
+      - name: Build and Package
         shell: bash
         run: |
+          # Environment Isolation
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cpu
 
           # Build Backend
           cd ML
-
           python -m nuitka main.py \
             --standalone \
             --lto=no \
@@ -42,7 +42,7 @@ jobs:
             --low-memory \
             --include-package=tensorflow \
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
-                    
+          
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
           chmod 755 ../backend/sage_backend
@@ -124,27 +124,6 @@ jobs:
             $RPM_ROOT/SPECS/StockD.spec
           mv $RPM_ROOT/RPMS/$RPM/*.rpm ./StockD-linux-$JOB_ID-1.2.0.rpm
 
-      - name: Verify Backend Bundle
-        shell: bash
-        run: |
-          BUNDLE="build/linux/x64/release/bundle"
-          echo "=== Backend bundle size ==="
-          du -sh $BUNDLE/data/flutter_assets/backend_bundle/
-          echo "=== CUDA libraries present ==="
-          ls $BUNDLE/data/flutter_assets/backend_bundle/ | grep -i "cuda\|cublas\|cudnn" || echo "No CUDA libs found"
-          echo "=== Intel extension present ==="
-          ls $BUNDLE/data/flutter_assets/backend_bundle/ | grep -i "intel\|itex" || echo "No Intel extension found"
-          echo "=== Total file count ==="
-          find $BUNDLE/data/flutter_assets/backend_bundle/ -type f | wc -l
-
-      - name: Split and Upload
-        run: |
-          for f in *.{deb,rpm}; do
-            [ -e "$f" ] || continue
-            size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
-            if [ "$size" -gt 1990000000 ]; then split -b 1900M "$f" "${f}.part_"; rm "$f"; fi
-          done
-
       - name: Deploy to Release
         uses: softprops/action-gh-release@v2
         with:
@@ -152,28 +131,25 @@ jobs:
           name: "StockD-1.2.0"
           make_latest: true
           overwrite_files: true
-          fail_on_unmatched_files: false
           files: |
             *.deb
             *.rpm
-            *.part_*
 
       - name: Cleanup
         if: always()
-        run: rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/
+        run: rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/ ML/dist/
 
   # ==========================================
   # JOB: X64 NVIDIA (Self-Hosted)
   # ==========================================
   linux-x64-nvidia:
     if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'linux-x64-nvidia' }}
-    needs: linux-x64-universal
     runs-on: self-hosted
     env: {ARCH: "x64", DEB: "amd64", RPM: "x86_64", JOB_ID: "x64-nvidia" }
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build and Package Backend (Nuitka)
+      - name: Build and Package
         shell: bash
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
@@ -205,7 +181,7 @@ jobs:
           flutter build linux --release --build-name=1.2.0
 
           # Inject Backend
-          BUNDLE="build/linux/x64/release/bundle"
+          BUNDLE="build/linux/$ARCH/release/bundle"
           mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
           cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
 
@@ -272,27 +248,6 @@ jobs:
             $RPM_ROOT/SPECS/StockD.spec
           mv $RPM_ROOT/RPMS/$RPM/*.rpm ./StockD-linux-$JOB_ID-1.2.0.rpm
 
-      - name: Verify Backend Bundle
-        shell: bash
-        run: |
-          BUNDLE="build/linux/x64/release/bundle"
-          echo "=== Backend bundle size ==="
-          du -sh $BUNDLE/data/flutter_assets/backend_bundle/
-          echo "=== CUDA libraries present ==="
-          ls $BUNDLE/data/flutter_assets/backend_bundle/ | grep -i "cuda\|cublas\|cudnn" || echo "No CUDA libs found"
-          echo "=== Intel extension present ==="
-          ls $BUNDLE/data/flutter_assets/backend_bundle/ | grep -i "intel\|itex" || echo "No Intel extension found"
-          echo "=== Total file count ==="
-          find $BUNDLE/data/flutter_assets/backend_bundle/ -type f | wc -l
-
-      - name: Split and Upload
-        run: |
-          for f in *.{deb,rpm}; do
-            [ -e "$f" ] || continue
-            size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
-            if [ "$size" -gt 1990000000 ]; then split -b 1900M "$f" "${f}.part_"; rm "$f"; fi
-          done
-
       - name: Deploy to Release
         uses: softprops/action-gh-release@v2
         with:
@@ -300,15 +255,13 @@ jobs:
           name: "StockD-1.2.0"
           make_latest: true
           overwrite_files: true
-          fail_on_unmatched_files: false
           files: |
             *.deb
             *.rpm
-            *.part_*
 
       - name: Cleanup
         if: always()
-        run: rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/
+        run: rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/ ML/dist/
 
   # ==========================================
   # JOB: ARM64 (Cloud-Hosted)
@@ -338,11 +291,11 @@ jobs:
       - name: Build and Package
         shell: bash
         run: |
+          export PYTHONNOUSERSITE=1
           export PATH="$PATH:$HOME/flutter/bin"
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
           sudo pip3 install --break-system-packages --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
 
-          # Build Backend with clang to avoid ARM64 relocation overflow
           cd ML
           python3 -m nuitka main.py \
             --standalone \
@@ -430,23 +383,6 @@ jobs:
             $RPM_ROOT/SPECS/StockD.spec
           mv $RPM_ROOT/RPMS/aarch64/*.rpm ./StockD-linux-$JOB_ID-1.2.0.rpm
 
-      - name: Verify Backend Bundle
-        shell: bash
-        run: |
-          BUNDLE="build/linux/arm64/release/bundle"
-          echo "=== Backend bundle size ==="
-          du -sh $BUNDLE/data/flutter_assets/backend_bundle/
-          echo "=== Total file count ==="
-          find $BUNDLE/data/flutter_assets/backend_bundle/ -type f | wc -l
-
-      - name: Split and Upload
-        run: |
-          for f in *.{deb,rpm}; do
-            [ -e "$f" ] || continue
-            size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
-            if [ "$size" -gt 1990000000 ]; then split -b 1900M "$f" "${f}.part_"; rm "$f"; fi
-          done
-
       - name: Deploy to Release
         uses: softprops/action-gh-release@v2
         with:
@@ -454,11 +390,9 @@ jobs:
           name: "StockD-1.2.0"
           make_latest: true
           overwrite_files: true
-          fail_on_unmatched_files: false
           files: |
             *.deb
             *.rpm
-            *.part_*
 
       - name: Cleanup
         if: always()
