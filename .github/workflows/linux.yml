@@ -23,25 +23,31 @@ jobs:
     env: { PKGS: "tensorflow intel-extension-for-tensorflow[cpu]", ARCH: "x64", DEB: "amd64", RPM: "x86_64", JOB_ID: "x64-universal" }
     steps:
       - uses: actions/checkout@v4
-      - name: Build and Package
+      - name: Build and Package Backend (Nuitka)
         shell: bash
         run: |
-          # 1. Setup New Conda Environment
-          source /home/gautam/anaconda3/etc/profile.d/conda.sh
-          conda create -y -n nuitka_build_env python=3.12
-          conda activate nuitka_build_env
+          # Initialize Conda and activate your specific environment
+          source $(conda info --base)/etc/profile.d/conda.sh
+          conda activate your_env_name || { echo "Conda env not found"; exit 1; }
           
-          # 2. Install Tools & Deps
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
-          pip install --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
+          pip install --no-cache-dir nuitka zstandard ordered-set $PKGS scikit-learn pandas yfinance fastapi uvicorn
           
-          # 3. Build Backend
           cd ML
-          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=6 --plugin-enable=anti-bloat --include-package=tensorflow
+          python3 -m nuitka main.py \
+            --standalone \
+            --plugin-enable=tensorflow \
+            --plugin-enable=anti-bloat \
+            --lto=no \
+            --python-exe=$(which python3) \
+            --python-flag=no_site \
+            --assume-yes-for-downloads \
+            --output-dir=dist \
+            --jobs=$JOBS \
+            --low-memory
+
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
-          chmod 755 ../backend/sage_backend && cp -r artifacts ../backend/ 2>/dev/null || true
+          chmod 755 ../backend/sage_backend && cp -r artifacts ../backend/ 2>/dev/null || true && cp *.keras *.pkl ml_config.py ../backend/ 2>/dev/null || true
           rm -rf dist && cd ..
 
           # 4. Flutter Build
@@ -128,22 +134,31 @@ jobs:
     env: { PKGS: "tensorflow[and-cuda]", ARCH: "x64", DEB: "amd64", RPM: "x86_64", JOB_ID: "x64-nvidia" }
     steps:
       - uses: actions/checkout@v4
-      - name: Build and Package
+      - name: Build and Package Backend (Nuitka)
         shell: bash
         run: |
-          source /home/gautam/anaconda3/etc/profile.d/conda.sh
-          conda create -y -n nuitka_build_env python=3.12
-          conda activate nuitka_build_env
+          # Initialize Conda and activate your specific environment
+          source $(conda info --base)/etc/profile.d/conda.sh
+          conda activate your_env_name || { echo "Conda env not found"; exit 1; }
           
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
-          pip install --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
+          pip install --no-cache-dir nuitka zstandard ordered-set $PKGS scikit-learn pandas yfinance fastapi uvicorn
           
           cd ML
-          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=6 --plugin-enable=anti-bloat --include-package=tensorflow
+          python3 -m nuitka main.py \
+            --standalone \
+            --plugin-enable=tensorflow \
+            --plugin-enable=anti-bloat \
+            --lto=no \
+            --python-exe=$(which python3) \
+            --python-flag=no_site \
+            --assume-yes-for-downloads \
+            --output-dir=dist \
+            --jobs=$JOBS \
+            --low-memory
+
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
-          chmod 755 ../backend/sage_backend && cp -r artifacts ../backend/ 2>/dev/null || true
+          chmod 755 ../backend/sage_backend && cp -r artifacts ../backend/ 2>/dev/null || true && cp *.keras *.pkl ml_config.py ../backend/ 2>/dev/null || true
           rm -rf dist && cd ..
 
           flutter config --enable-linux-desktop
