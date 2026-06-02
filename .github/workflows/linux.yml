@@ -104,7 +104,7 @@ jobs:
         with:
           tag_name: latest
           name: "StockD-1.2.0"
-          overwrite: true
+          overwrite_file: true
           files: |
             *.deb
             *.rpm
@@ -203,7 +203,7 @@ jobs:
         with:
           tag_name: latest
           name: "StockD-1.2.0"
-          overwrite: true
+          overwrite_file: true
           files: |
             *.deb
             *.rpm
@@ -312,7 +312,7 @@ jobs:
           tag_name: latest
           name: "StockD-1.2.0"
           make_latest: true
-          overwrite: true
+          overwrite_file: true
           files: |
             *.deb
             *.rpm
