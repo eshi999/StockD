@@ -2,6 +2,17 @@ name: Linux Build
 
 on:
   workflow_dispatch:
+    inputs:
+      build_target:
+        description: 'Select target build architecture'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - linux-x64-generic
+          - linux-x64-nvidia
+          - linux-arm64
 
 permissions:
   contents: write
@@ -10,6 +21,7 @@ jobs:
   build:
     name: Build (${{ matrix.id }})
     runs-on: ${{ matrix.os }}
+
     strategy:
       fail-fast: false
       matrix:
@@ -21,13 +33,16 @@ jobs:
             rpm_arch: x86_64
             pkgs: "tensorflow"
             jobs: 4
+
+          # Self-hosted (requested)
           - id: linux-x64-nvidia
-            os: ubuntu-latest
+            os: self-hosted
             arch: x64
             deb_arch: amd64
             rpm_arch: x86_64
             pkgs: "tensorflow[and-cuda]"
             jobs: 4
+
           - id: linux-arm64
             os: ubuntu-24.04-arm
             arch: arm64
@@ -37,6 +52,12 @@ jobs:
             jobs: 4
 
     steps:
+      - name: Skip unwanted targets
+        if: ${{ inputs.build_target != 'all' && inputs.build_target != matrix.id }}
+        run: |
+          echo "Skipping ${{ matrix.id }}"
+          exit 0
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -56,7 +77,7 @@ jobs:
         shell: bash
         run: |
           pip3 install --break-system-packages nuitka zstandard ordered-set ${{ matrix.pkgs }} scikit-learn pandas yfinance fastapi uvicorn
-          
+
           cd ML
           python3 -m nuitka main.py \
             --standalone \
@@ -71,11 +92,15 @@ jobs:
 
           mkdir -p ../backend
           cp -r dist/main.dist/* ../backend/
-          mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
+
+          mv ../backend/main ../backend/sage_backend 2>/dev/null || \
+          mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
+
           chmod 755 ../backend/sage_backend
-          
+
           cp -r artifacts ../backend/ 2>/dev/null || true
           cp *.keras *.pkl ml_config.py ../backend/ 2>/dev/null || true
+
           rm -rf dist
           cd ..
 
@@ -115,13 +140,14 @@ jobs:
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           DEB_ROOT="package_root_${{ matrix.id }}"
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/pixmaps
-          
+
           cp -r $BUNDLE/* $DEB_ROOT/usr/lib/StockD-1.2.0/
           cp assets/images/StockD.png $DEB_ROOT/usr/share/pixmaps/stockd.png
           cp linux_desktop/stockd.desktop $DEB_ROOT/usr/share/applications/
+
           ln -s /usr/lib/StockD-1.2.0/stockd $DEB_ROOT/usr/bin/stockd
           chmod 755 $DEB_ROOT/usr/lib/StockD-1.2.0/stockd
-          
+
           cat > $DEB_ROOT/DEBIAN/control << EOF
           Package: stockd-${{ matrix.id }}
           Version: 1.2.0
@@ -130,7 +156,7 @@ jobs:
           Description: AI Stock App Optimized for ${{ matrix.id }}
           Depends: libgtk-3-0
           EOF
-          
+
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-${{ matrix.id }}-1.2.0.deb
           rm -rf $DEB_ROOT
 
@@ -138,19 +164,20 @@ jobs:
         run: |
           BUNDLE="build/linux/${{ matrix.arch }}/release/bundle"
           RPM_ROOT=$HOME/rpmbuild
-          
+
           rm -rf $RPM_ROOT/SPECS $RPM_ROOT/RPMS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
           mkdir -p $RPM_ROOT/{SPECS,RPMS}
-          
+
           RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-${{ matrix.id }}-1.2.0-1.${{ matrix.rpm_arch }}"
           mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_STAGE/usr/share/applications $RPM_STAGE/usr/share/pixmaps
-          
+
           cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
           cp assets/images/StockD.png $RPM_STAGE/usr/share/pixmaps/stockd.png
           cp linux_desktop/stockd.desktop $RPM_STAGE/usr/share/applications/
+
           ln -s /usr/lib/StockD-1.2.0/stockd $RPM_STAGE/usr/bin/stockd
           chmod 755 $RPM_STAGE/usr/lib/StockD-1.2.0/stockd
-          
+
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
           %global __requires_exclude .*
           %global __provides_exclude .*
@@ -161,16 +188,19 @@ jobs:
           Summary: StockD AI Stock App Optimized for ${{ matrix.id }}
           BuildArch: ${{ matrix.rpm_arch }}
           License: Proprietary
+
           %description
           AI Financial Literacy Coach.
+
           %files
           /usr/lib/StockD-1.2.0
           /usr/bin/stockd
           /usr/share/applications/stockd.desktop
           /usr/share/pixmaps/stockd.png
           EOF
-          
+
           rpmbuild -bb --nodeps --define "__strip /bin/true" --define "_topdir $RPM_ROOT" --buildroot "$RPM_STAGE" $RPM_ROOT/SPECS/StockD.spec
+
           mv $RPM_ROOT/RPMS/${{ matrix.rpm_arch }}/*.rpm ./StockD-${{ matrix.id }}-1.2.0.rpm
           rm -rf $RPM_ROOT/SPECS $RPM_ROOT/BUILDROOT $RPM_ROOT/BUILD
 
@@ -204,4 +234,5 @@ jobs:
 
       - name: Purge Residual Build Assets
         if: always()
-        run: rm -rf build/ backend/ linux_desktop/ StockD-*.deb StockD-*.rpm 2>/dev/null || true
+        run: |
+          rm -rf build/ backend/ linux_desktop/ StockD-*.deb StockD-*.rpm 2>/dev/null || true
