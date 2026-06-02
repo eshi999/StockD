@@ -38,7 +38,7 @@ jobs:
           
           # 3. Build Backend
           cd ML
-          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=4 --plugin-enable=anti-bloat --include-package=tensorflow
+          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=6 --plugin-enable=anti-bloat --include-package=tensorflow
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
           chmod 755 ../backend/sage_backend && cp -r artifacts ../backend/ 2>/dev/null || true
@@ -140,7 +140,7 @@ jobs:
           pip install --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
           
           cd ML
-          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=4 --plugin-enable=anti-bloat --include-package=tensorflow
+          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=6 --plugin-enable=anti-bloat --include-package=tensorflow
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
           chmod 755 ../backend/sage_backend && cp -r artifacts ../backend/ 2>/dev/null || true
@@ -247,7 +247,7 @@ jobs:
           
           cd ML
           export CFLAGS="-mlong-calls -fPIC"
-          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=4 --plugin-enable=anti-bloat --include-package=tensorflow
+          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=2 --plugin-enable=anti-bloat --include-package=tensorflow
           cd ..
           
           mkdir -p backend && cp -r ML/dist/main.dist/* backend/
