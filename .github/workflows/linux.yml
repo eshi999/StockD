@@ -26,7 +26,7 @@ jobs:
       - name: Build and Package Backend (Nuitka)
         shell: bash
         run: |
-          source ~/anaconda3/etc/profile.d/conda.sh || source /opt/anaconda3/etc/profile.d/conda.sh
+          source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cpu
           export PYTHON=$(which python)
           export PIP=$(which pip)
@@ -121,7 +121,7 @@ jobs:
       - name: Build and Package Backend (Nuitka)
         shell: bash
         run: |
-          source ~/anaconda3/etc/profile.d/conda.sh || source /opt/anaconda3/etc/profile.d/conda.sh
+          source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cuda
           export PYTHON=$(which python)
           export PIP=$(which pip)
