@@ -18,7 +18,7 @@ jobs:
           python -m nuitka ML/main.py --standalone `
             --assume-yes-for-downloads `
             --output-dir=dist `
-            --jobs=4 `
+            --jobs=6 `
             --plugin-enable=anti-bloat `
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite `
             --include-package=tensorflow `
