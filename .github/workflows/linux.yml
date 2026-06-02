@@ -31,9 +31,12 @@ jobs:
 
           # Activate existing environment (already created manually)
           conda activate StockD_build_cpu
+
+          export PYTHON=$(which python)
+          export PIP=$(which pip)
           
           cd ML
-          python3 -m nuitka main.py \
+          python -m nuitka main.py \
             --standalone \
             --plugin-enable=tensorflow \
             --plugin-enable=anti-bloat \
