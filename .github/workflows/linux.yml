@@ -38,8 +38,7 @@ jobs:
           cd ML
           python -m nuitka main.py \
             --standalone \
-
-            --lto=yes \
+            --lto=no \
             --assume-yes-for-downloads \
             --output-dir=dist \
             --jobs=6  \
