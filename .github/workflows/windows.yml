@@ -1,6 +1,6 @@
 name: Windows Build
 on: [workflow_dispatch]
-permissions: {contents: write}
+permissions: { contents: write }
 
 jobs:
   build:
@@ -11,63 +11,69 @@ jobs:
       - name: Build SAGE Backend (Nuitka)
         shell: powershell
         run: |
-          # 1. Install Dependencies
+          pip install --upgrade pip
           pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance
           
-          # 2. Build Backend
+          # Build Backend
           python -m nuitka ML/main.py --standalone `
             --assume-yes-for-downloads `
             --output-dir=dist `
-            --jobs=4 `
+            --jobs=6 `
             --plugin-enable=anti-bloat `
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite `
             --include-package=tensorflow `
             --msvc=latest
 
-          # 3. Copy all compiled Nuitka dependencies
+          # Preserve Structure
           New-Item -ItemType Directory -Path "backend" -Force
-          Copy-Item -Path "dist\main.dist\*" -Destination "backend\" -Recurse -Force
+          Copy-Item -Path "dist\main.dist" -Destination "backend\" -Recurse -Force
 
-          # 4. Remove raw Nuitka binary name, replace with sage_backend
-          Remove-Item -Path "backend\main.exe" -ErrorAction SilentlyContinue
-          if (Test-Path "dist\main.dist\main.exe") {
-              Rename-Item -Path "dist\main.dist\main.exe" -NewName "sage_backend.exe"
-              Copy-Item "dist\main.dist\sage_backend.exe" -Destination "backend\" -Force
-          }
+          # Rename Binary
+          if (Test-Path "backend\main.dist\main.exe") { Rename-Item -Path "backend\main.dist\main.exe" -NewName "sage_backend.exe" }
+          elseif (Test-Path "backend\main.dist\main.bin") { Rename-Item -Path "backend\main.dist\main.bin" -NewName "sage_backend.exe" }
 
-          # 5. Copy model artifacts alongside the binary
-          if (Test-Path "ML\artifacts") { Copy-Item -Recurse -Path "ML\artifacts" -Destination "backend\artifacts" -Force }
-          if (Test-Path "ML\sage_model.keras") { Copy-Item -Path "ML\sage_model.keras" -Destination "backend\" -Force }
-          Get-ChildItem -Path "ML\*.pkl" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination "backend\" -Force }
-          if (Test-Path "ML\ml_config.py") { Copy-Item -Path "ML\ml_config.py" -Destination "backend\" -Force }
+          # Copy Artifacts
+          if (Test-Path "ML\artifacts") { Copy-Item -Recurse -Path "ML\artifacts" -Destination "backend\main.dist\" -Force }
+          if (Test-Path "ML\sage_model.keras") { Copy-Item -Path "ML\sage_model.keras" -Destination "backend\main.dist\" -Force }
+          Get-ChildItem -Path "ML\*.pkl" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination "backend\main.dist\" -Force }
+          if (Test-Path "ML\ml_config.py") { Copy-Item -Path "ML\ml_config.py" -Destination "backend\main.dist\" -Force }
           
-          # 6. Cleanup temp dist
-          Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "dist" -Recurse -Force
 
-      - name: Build Flutter GUI
+      - name: Prepare Icons & Build Flutter GUI
         shell: powershell
         run: |
+          # 1. Generate the icon from your PNG
+          pip install Pillow
+          python -c "from PIL import Image; img = Image.open('assets/images/StockD.png').convert('RGBA'); img.save('nsis_icon.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])"
+
+          # 2. Overwrite Flutter's default Windows icon BEFORE building
+          Copy-Item -Path "nsis_icon.ico" -Destination "windows\runner\resources\app_icon.ico" -Force
+          
+          # 3. Build the Flutter app (it will natively use your new icon)
           flutter config --enable-windows-desktop
           flutter build windows --release
 
-      - name: Inject Backend & Package (NSIS)
+      - name: Inject Backend
         shell: powershell
         run: |
-          # Inject Backend
+          # Inject Backend into the Flutter build directory
           $target = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
-          if (!(Test-Path $target)) { New-Item -ItemType Directory -Force -Path $target }
-          Copy-Item -Recurse -Path "backend\*" -Destination $target -Force
+          New-Item -ItemType Directory -Force -Path $target
+          Copy-Item -Recurse -Path "backend\main.dist\*" -Destination $target -Force
           Remove-Item -Recurse -Force -Path "backend"
 
-          # Generate Icon
-          magick "assets\images\StockD.png" -define icon:auto-resize=256,128,64,48,32,16 "nsis_icon.ico"
-
-          # Generate NSIS Script
+      - name: Package (NSIS)
+        shell: powershell
+        run: |
+          # NSIS Script
           $nsisScript = @"
           !include "MUI2.nsh"
           Name "StockD"
           OutFile "StockD-win-x64.exe"
           InstallDir "`$PROGRAMFILES64\StockD"
+          
+          ; Use the icon we generated earlier
           !define MUI_ICON "nsis_icon.ico"
           !define MUI_UNICON "nsis_icon.ico"
           !insertmacro MUI_PAGE_DIRECTORY
@@ -77,25 +83,27 @@ jobs:
           Section "MainSection" SEC01
             SetOutPath "`$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
-            File "/oname=StockD_Logo.ico" "nsis_icon.ico"
+            
+            ; Copy the icon into the install directory for the shortcuts
+            File "nsis_icon.ico" 
+            
             WriteUninstaller "`$INSTDIR\uninstall.exe"
-            CreateDirectory "`$SMPROGRAMS\StockD"
-            CreateShortcut "`$SMPROGRAMS\StockD\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\StockD_Logo.ico" 0
-            CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\StockD_Logo.ico" 0
+            
+            ; Create shortcuts explicitly pointing to the .ico file
+            CreateShortcut "`$SMPROGRAMS\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\nsis_icon.ico" 0
+            CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\nsis_icon.ico" 0
           SectionEnd
           
           Section "Uninstall"
             Delete "`$INSTDIR\uninstall.exe"
-            Delete "`$INSTDIR\StockD_Logo.ico"
-            RMDir /r "`$INSTDIR"
-            Delete "`$SMPROGRAMS\StockD\StockD.lnk"
+            Delete "`$SMPROGRAMS\StockD.lnk"
             Delete "`$DESKTOP\StockD.lnk"
-            RMDir "`$SMPROGRAMS\StockD"
+            Delete "`$INSTDIR\nsis_icon.ico"
+            RMDir /r "`$INSTDIR"
           SectionEnd
           "@
           $nsisScript | Out-File -FilePath "StockD.nsi" -Encoding ascii
           
-          # Compile
           & "C:\Program Files (x86)\NSIS\makensis.exe" StockD.nsi
 
       - name: Upload Release
@@ -106,8 +114,10 @@ jobs:
           overwrite_files: true
           files: StockD-win-x64.exe
 
-      - name: Cleanup Workspace
+      - name: Cleanup
         if: always()
         shell: powershell
         run: |
-          Remove-Item -Recurse -Force -Path "." -Include "build", "dist", "backend", "StockD.nsi", "nsis_icon.ico" -ErrorAction SilentlyContinue
+          # Note: Removed rcedit from cleanup list
+          $paths = @("build", "dist", "backend", "pkg_deb", "StockD.nsi", "nsis_icon.ico")
+          foreach ($p in $paths) { if (Test-Path $p) { Remove-Item -Recurse -Force -Path $p } }
