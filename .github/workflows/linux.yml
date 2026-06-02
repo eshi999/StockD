@@ -31,13 +31,12 @@ jobs:
       - name: Build and Package Backend (Nuitka)
         shell: bash
         run: |
-          export PYTHONNOUSERSITE=1
-          export PIP_REQUIRE_VIRTUALENV=false
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cpu
 
           # Build Backend
           cd ML
+
           python -m nuitka main.py \
             --standalone \
             --lto=no \
@@ -45,9 +44,9 @@ jobs:
             --output-dir=dist \
             --jobs=6 \
             --low-memory \
-            --plugin-enable=anti-bloat \
             --include-package=tensorflow \
-            --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
+            --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
+                    
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
           chmod 755 ../backend/sage_backend
@@ -181,8 +180,6 @@ jobs:
       - name: Build and Package Backend (Nuitka)
         shell: bash
         run: |
-          export PYTHONNOUSERSITE=1
-          export PIP_REQUIRE_VIRTUALENV=false
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cuda
 
@@ -195,9 +192,9 @@ jobs:
             --output-dir=dist \
             --jobs=6 \
             --low-memory \
-            --plugin-enable=anti-bloat \
             --include-package=tensorflow \
-            --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
+            --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
+          
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
           chmod 755 ../backend/sage_backend
