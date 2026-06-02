@@ -154,7 +154,7 @@ jobs:
           # 2. Build Backend (With -mlong-calls to fix Relocation Overflow)
           cd ML
           export CFLAGS="-mlong-calls -fPIC"
-          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=2 --log-memory --plugin-enable=anti-bloat --include-package=tensorflow
+          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=2 --low-memory --plugin-enable=anti-bloat --include-package=tensorflow
           cd ..
           
           # 3. Packaging Logic
