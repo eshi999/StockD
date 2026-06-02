@@ -33,8 +33,8 @@ jobs:
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cpu
-          TF_ROOT="/home/gautam/miniconda3/envs/StockD_build_/lib/python3.12/site-packages/tensorflow"
-
+          TF_ROOT=$(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__))")
+          
           cd ML
           python -m nuitka main.py --standalone --lto=no --assume-yes-for-downloads --output-dir=dist --jobs=6 --low-memory --include-package=tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT" --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
@@ -109,7 +109,7 @@ jobs:
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cuda
           export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(find /home/gautam/miniconda3/envs/StockD_build_cuda -name "lib" | grep "nvidia" | tr '\n' ':')
-          TF_ROOT="/home/gautam/miniconda3/envs/StockD_build_cuda/lib/python3.12/site-packages/tensorflow"
+          TF_ROOT=$(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__))")
 
           cd ML
           python -m nuitka main.py --standalone --lto=no --assume-yes-for-downloads --output-dir=dist --jobs=6 --low-memory --include-package=tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT" --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
