@@ -11,14 +11,12 @@ jobs:
       - name: Build SAGE Backend (Nuitka)
         shell: powershell
         run: |
-          # 1. Install Dependencies
           pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance
           
-          # 2. GENERATE ICON (Must be done before Nuitka)
-          # Note: Ensure ImageMagick is installed on your self-hosted runner
+          # Generate Icon
           magick "assets\images\StockD.png" -define icon:auto-resize=256,128,64,48,32,16 "nsis_icon.ico"
           
-          # 3. Build Backend (Using --windows-icon-from-ico)
+          # Build Backend with embedded icon
           python -m nuitka ML/main.py --standalone `
             --assume-yes-for-downloads `
             --output-dir=dist `
@@ -29,16 +27,16 @@ jobs:
             --windows-icon-from-ico="nsis_icon.ico" `
             --msvc=latest
 
-          # 4. Maintain Nuitka structure (Do not flatten the folder)
+          # Preserve Structure
           New-Item -ItemType Directory -Path "backend" -Force
           Copy-Item -Path "dist\main.dist" -Destination "backend\" -Recurse -Force
 
-          # 5. Rename the binary inside the preserved structure
+          # Rename Binary
           if (Test-Path "backend\main.dist\main.exe") { Rename-Item -Path "backend\main.dist\main.exe" -NewName "sage_backend.exe" }
           elseif (Test-Path "backend\main.dist\main.bin") { Rename-Item -Path "backend\main.dist\main.bin" -NewName "sage_backend.exe" }
 
-          # 6. Copy artifacts inside the preserved structure
-          if (Test-Path "ML\artifacts") { Copy-Item -Recurse -Path "ML\artifacts" -Destination "backend\main.dist\artifacts" -Force }
+          # Copy Artifacts
+          if (Test-Path "ML\artifacts") { Copy-Item -Recurse -Path "ML\artifacts" -Destination "backend\main.dist\" -Force }
           if (Test-Path "ML\sage_model.keras") { Copy-Item -Path "ML\sage_model.keras" -Destination "backend\main.dist\" -Force }
           Get-ChildItem -Path "ML\*.pkl" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination "backend\main.dist\" -Force }
           if (Test-Path "ML\ml_config.py") { Copy-Item -Path "ML\ml_config.py" -Destination "backend\main.dist\" -Force }
@@ -54,13 +52,12 @@ jobs:
       - name: Inject Backend & Package (NSIS)
         shell: powershell
         run: |
-          # Inject preserved backend structure
           $target = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
           New-Item -ItemType Directory -Force -Path $target
           Copy-Item -Recurse -Path "backend\main.dist\*" -Destination $target -Force
           Remove-Item -Recurse -Force -Path "backend"
 
-          # Generate NSIS Script
+          # Corrected NSIS Script with Uninstall Section
           $nsisScript = @"
           !include "MUI2.nsh"
           Name "StockD"
@@ -76,13 +73,19 @@ jobs:
             SetOutPath "`$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
             WriteUninstaller "`$INSTDIR\uninstall.exe"
-            CreateShortcut "`$SMPROGRAMS\StockD\StockD.lnk" "`$INSTDIR\StockD.exe"
+            CreateShortcut "`$SMPROGRAMS\StockD.lnk" "`$INSTDIR\StockD.exe"
             CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe"
+          SectionEnd
+          
+          Section "Uninstall"
+            Delete "`$INSTDIR\uninstall.exe"
+            Delete "`$SMPROGRAMS\StockD.lnk"
+            Delete "`$DESKTOP\StockD.lnk"
+            RMDir /r "`$INSTDIR"
           SectionEnd
           "@
           $nsisScript | Out-File -FilePath "StockD.nsi" -Encoding ascii
           
-          # Compile
           & "C:\Program Files (x86)\NSIS\makensis.exe" StockD.nsi
 
       - name: Upload Release
