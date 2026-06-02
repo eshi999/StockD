@@ -14,7 +14,7 @@ jobs:
           pip install --upgrade pip
           pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance
           
-          # Build Backend (Icon injection removed)
+          # Build Backend
           python -m nuitka ML/main.py --standalone `
             --assume-yes-for-downloads `
             --output-dir=dist `
@@ -40,30 +40,40 @@ jobs:
           
           Remove-Item -Path "dist" -Recurse -Force
 
-      - name: Build Flutter GUI
+      - name: Prepare Icons & Build Flutter GUI
         shell: powershell
         run: |
+          # 1. Generate the icon from your PNG
+          pip install Pillow
+          python -c "from PIL import Image; img = Image.open('assets/images/StockD.png').convert('RGBA'); img.save('nsis_icon.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])"
+
+          # 2. Overwrite Flutter's default Windows icon BEFORE building
+          Copy-Item -Path "nsis_icon.ico" -Destination "windows\runner\resources\app_icon.ico" -Force
+          
+          # 3. Build the Flutter app (it will natively use your new icon)
           flutter config --enable-windows-desktop
           flutter build windows --release
 
-      - name: Inject Backend & Package (NSIS)
+      - name: Inject Backend
         shell: powershell
         run: |
-          # Generate Icon specifically for NSIS here
-          pip install Pillow
-          python -c "from PIL import Image; img = Image.open('assets/images/StockD.png').convert('RGBA'); img.save('nsis_icon.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])"
-          
+          # Inject Backend into the Flutter build directory
           $target = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
           New-Item -ItemType Directory -Force -Path $target
           Copy-Item -Recurse -Path "backend\main.dist\*" -Destination $target -Force
           Remove-Item -Recurse -Force -Path "backend"
 
-          # NSIS Script with Uninstall Section
+      - name: Package (NSIS)
+        shell: powershell
+        run: |
+          # NSIS Script
           $nsisScript = @"
           !include "MUI2.nsh"
           Name "StockD"
           OutFile "StockD-win-x64.exe"
           InstallDir "`$PROGRAMFILES64\StockD"
+          
+          ; Use the icon we generated earlier
           !define MUI_ICON "nsis_icon.ico"
           !define MUI_UNICON "nsis_icon.ico"
           !insertmacro MUI_PAGE_DIRECTORY
@@ -73,15 +83,22 @@ jobs:
           Section "MainSection" SEC01
             SetOutPath "`$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
+            
+            ; Copy the icon into the install directory for the shortcuts
+            File "nsis_icon.ico" 
+            
             WriteUninstaller "`$INSTDIR\uninstall.exe"
-            CreateShortcut "`$SMPROGRAMS\StockD.lnk" "`$INSTDIR\StockD.exe"
-            CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe"
+            
+            ; Create shortcuts explicitly pointing to the .ico file
+            CreateShortcut "`$SMPROGRAMS\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\nsis_icon.ico" 0
+            CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\nsis_icon.ico" 0
           SectionEnd
           
           Section "Uninstall"
             Delete "`$INSTDIR\uninstall.exe"
             Delete "`$SMPROGRAMS\StockD.lnk"
             Delete "`$DESKTOP\StockD.lnk"
+            Delete "`$INSTDIR\nsis_icon.ico"
             RMDir /r "`$INSTDIR"
           SectionEnd
           "@
@@ -101,5 +118,6 @@ jobs:
         if: always()
         shell: powershell
         run: |
+          # Note: Removed rcedit from cleanup list
           $paths = @("build", "dist", "backend", "pkg_deb", "StockD.nsi", "nsis_icon.ico")
           foreach ($p in $paths) { if (Test-Path $p) { Remove-Item -Recurse -Force -Path $p } }
