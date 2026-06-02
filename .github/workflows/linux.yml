@@ -60,6 +60,7 @@ jobs:
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
+          License: Proprietary
           Description: StockD AI
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-$JOB_ID-1.2.0.deb
@@ -71,6 +72,7 @@ jobs:
           Name: stockd-linux-$JOB_ID
           Version: 1.2.0
           Release: 1
+          License: Proprietary
           Summary: StockD AI
           %global __requires_exclude_from ^/usr/lib/StockD-1.2.0/.*$
           %files
@@ -136,6 +138,7 @@ jobs:
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
+          License: Proprietary
           Description: StockD AI
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-$JOB_ID-1.2.0.deb
@@ -147,6 +150,7 @@ jobs:
           Name: stockd-linux-$JOB_ID
           Version: 1.2.0
           Release: 1
+          License: Proprietary
           Summary: StockD AI
           %global __requires_exclude_from ^/usr/lib/StockD-1.2.0/.*$
           %files
@@ -213,6 +217,7 @@ jobs:
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
+          License: Proprietary
           Description: StockD AI
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-$JOB_ID-1.2.0.deb
@@ -224,6 +229,7 @@ jobs:
           Name: stockd-linux-$JOB_ID
           Version: 1.2.0
           Release: 1
+          License: Proprietary
           Summary: StockD AI
           %global __requires_exclude_from ^/usr/lib/StockD-1.2.0/.*$
           %files
