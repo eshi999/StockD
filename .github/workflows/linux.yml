@@ -179,7 +179,7 @@ jobs:
           python3 -m venv venv && source venv/bin/activate
           pip install -U pip nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas tensorflow
           
-          python3 -m nuitka ML/main.py --standalone --output-dir=dist --low-memory --prefer-source-code
+          python3 -m nuitka ML/main.py --standalone --output-dir=dist --low-memory --prefer-source-code --clang
           mkdir -p backend && cp -r dist/main.dist/* backend/ && mv backend/main backend/sage_backend 2>/dev/null || true
           chmod +x backend/sage_backend
           
