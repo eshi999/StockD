@@ -63,6 +63,7 @@ jobs:
           Architecture: $DEB
           Maintainer: Gautam Mahajan
           Description: StockD AI
+          License: Proprietary
           Depends: libgtk-3-0
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-$JOB_ID-1.2.0.deb
@@ -79,6 +80,7 @@ jobs:
           Summary: StockD AI
           BuildArch: $RPM
           Requires: gtk3
+          License: Proprietary
           %description
           AI Coach
           %files
@@ -159,6 +161,7 @@ jobs:
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
+          License: Proprietary
           Description: StockD AI
           Depends: libgtk-3-0
           EOF
@@ -176,6 +179,7 @@ jobs:
           Summary: StockD AI
           BuildArch: $RPM
           Requires: gtk3
+          License: Proprietary
           %description
           AI Coach
           %files
@@ -266,6 +270,7 @@ jobs:
           Architecture: $DEB
           Maintainer: Gautam Mahajan
           Description: StockD AI
+          License: Proprietary
           Depends: libgtk-3-0
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-$JOB_ID-1.2.0.deb
@@ -280,6 +285,7 @@ jobs:
           Version: 1.2.0
           Release: 1
           Summary: StockD AI
+          License: Proprietary
           BuildArch: aarch64
           Requires: gtk3
           %description
