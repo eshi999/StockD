@@ -38,8 +38,7 @@ jobs:
           cd ML
           python -m nuitka main.py \
             --standalone \
-            --plugin-enable=tensorflow \
-            --plugin-enable=anti-bloat \
+
             --lto=yes \
             --assume-yes-for-downloads \
             --output-dir=dist \
