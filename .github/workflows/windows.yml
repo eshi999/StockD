@@ -1,6 +1,6 @@
 name: Windows Build
 on: [workflow_dispatch]
-permissions: {contents: write}
+permissions: { contents: write }
 
 jobs:
   build:
@@ -14,7 +14,11 @@ jobs:
           # 1. Install Dependencies
           pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance
           
-          # 2. Build Backend
+          # 2. GENERATE ICON (Must be done before Nuitka)
+          # Note: Ensure ImageMagick is installed on your self-hosted runner
+          magick "assets\images\StockD.png" -define icon:auto-resize=256,128,64,48,32,16 "nsis_icon.ico"
+          
+          # 3. Build Backend (Using --windows-icon-from-ico)
           python -m nuitka ML/main.py --standalone `
             --assume-yes-for-downloads `
             --output-dir=dist `
@@ -22,27 +26,24 @@ jobs:
             --plugin-enable=anti-bloat `
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite `
             --include-package=tensorflow `
+            --windows-icon-from-ico="nsis_icon.ico" `
             --msvc=latest
 
-          # 3. Copy all compiled Nuitka dependencies
+          # 4. Maintain Nuitka structure (Do not flatten the folder)
           New-Item -ItemType Directory -Path "backend" -Force
-          Copy-Item -Path "dist\main.dist\*" -Destination "backend\" -Recurse -Force
+          Copy-Item -Path "dist\main.dist" -Destination "backend\" -Recurse -Force
 
-          # 4. Remove raw Nuitka binary name, replace with sage_backend
-          Remove-Item -Path "backend\main.exe" -ErrorAction SilentlyContinue
-          if (Test-Path "dist\main.dist\main.exe") {
-              Rename-Item -Path "dist\main.dist\main.exe" -NewName "sage_backend.exe"
-              Copy-Item "dist\main.dist\sage_backend.exe" -Destination "backend\" -Force
-          }
+          # 5. Rename the binary inside the preserved structure
+          if (Test-Path "backend\main.dist\main.exe") { Rename-Item -Path "backend\main.dist\main.exe" -NewName "sage_backend.exe" }
+          elseif (Test-Path "backend\main.dist\main.bin") { Rename-Item -Path "backend\main.dist\main.bin" -NewName "sage_backend.exe" }
 
-          # 5. Copy model artifacts alongside the binary
-          if (Test-Path "ML\artifacts") { Copy-Item -Recurse -Path "ML\artifacts" -Destination "backend\artifacts" -Force }
-          if (Test-Path "ML\sage_model.keras") { Copy-Item -Path "ML\sage_model.keras" -Destination "backend\" -Force }
-          Get-ChildItem -Path "ML\*.pkl" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination "backend\" -Force }
-          if (Test-Path "ML\ml_config.py") { Copy-Item -Path "ML\ml_config.py" -Destination "backend\" -Force }
+          # 6. Copy artifacts inside the preserved structure
+          if (Test-Path "ML\artifacts") { Copy-Item -Recurse -Path "ML\artifacts" -Destination "backend\main.dist\artifacts" -Force }
+          if (Test-Path "ML\sage_model.keras") { Copy-Item -Path "ML\sage_model.keras" -Destination "backend\main.dist\" -Force }
+          Get-ChildItem -Path "ML\*.pkl" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination "backend\main.dist\" -Force }
+          if (Test-Path "ML\ml_config.py") { Copy-Item -Path "ML\ml_config.py" -Destination "backend\main.dist\" -Force }
           
-          # 6. Cleanup temp dist
-          Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "dist" -Recurse -Force
 
       - name: Build Flutter GUI
         shell: powershell
@@ -53,14 +54,11 @@ jobs:
       - name: Inject Backend & Package (NSIS)
         shell: powershell
         run: |
-          # Inject Backend
+          # Inject preserved backend structure
           $target = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
-          if (!(Test-Path $target)) { New-Item -ItemType Directory -Force -Path $target }
-          Copy-Item -Recurse -Path "backend\*" -Destination $target -Force
+          New-Item -ItemType Directory -Force -Path $target
+          Copy-Item -Recurse -Path "backend\main.dist\*" -Destination $target -Force
           Remove-Item -Recurse -Force -Path "backend"
-
-          # Generate Icon
-          magick "assets\images\StockD.png" -define icon:auto-resize=256,128,64,48,32,16 "nsis_icon.ico"
 
           # Generate NSIS Script
           $nsisScript = @"
@@ -77,20 +75,9 @@ jobs:
           Section "MainSection" SEC01
             SetOutPath "`$INSTDIR"
             File /r "build\windows\x64\runner\Release\*.*"
-            File "/oname=StockD_Logo.ico" "nsis_icon.ico"
             WriteUninstaller "`$INSTDIR\uninstall.exe"
-            CreateDirectory "`$SMPROGRAMS\StockD"
-            CreateShortcut "`$SMPROGRAMS\StockD\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\StockD_Logo.ico" 0
-            CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe" "" "`$INSTDIR\StockD_Logo.ico" 0
-          SectionEnd
-          
-          Section "Uninstall"
-            Delete "`$INSTDIR\uninstall.exe"
-            Delete "`$INSTDIR\StockD_Logo.ico"
-            RMDir /r "`$INSTDIR"
-            Delete "`$SMPROGRAMS\StockD\StockD.lnk"
-            Delete "`$DESKTOP\StockD.lnk"
-            RMDir "`$SMPROGRAMS\StockD"
+            CreateShortcut "`$SMPROGRAMS\StockD\StockD.lnk" "`$INSTDIR\StockD.exe"
+            CreateShortcut "`$DESKTOP\StockD.lnk" "`$INSTDIR\StockD.exe"
           SectionEnd
           "@
           $nsisScript | Out-File -FilePath "StockD.nsi" -Encoding ascii
@@ -106,8 +93,9 @@ jobs:
           overwrite_files: true
           files: StockD-win-x64.exe
 
-      - name: Cleanup Workspace
+      - name: Cleanup
         if: always()
         shell: powershell
         run: |
-          Remove-Item -Recurse -Force -Path "." -Include "build", "dist", "backend", "StockD.nsi", "nsis_icon.ico" -ErrorAction SilentlyContinue
+          $paths = @("build", "dist", "backend", "pkg_deb", "StockD.nsi", "nsis_icon.ico")
+          foreach ($p in $paths) { if (Test-Path $p) { Remove-Item -Recurse -Force -Path $p } }
