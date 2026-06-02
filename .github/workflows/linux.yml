@@ -13,6 +13,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.build_target }}
+  cancel-in-progress: true
+
 jobs:
   # ==========================================
   # JOB: X64 UNIVERSAL (Self-Hosted)
@@ -20,104 +24,75 @@ jobs:
   linux-x64-universal:
     if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'linux-x64-universal' }}
     runs-on: self-hosted
-    env: { PKGS: "tensorflow intel-extension-for-tensorflow[cpu]", ARCH: "x64", DEB: "amd64", RPM: "x86_64", JOB_ID: "x64-universal" }
+    env: {ARCH: "x64", DEB: "amd64", RPM: "x86_64", JOB_ID: "x64-universal" }
     steps:
       - uses: actions/checkout@v4
+
       - name: Build and Package
         shell: bash
         run: |
-          # 1. Setup New Conda Environment
-          source /home/gautam/anaconda3/etc/profile.d/conda.sh
-          conda create -y -n nuitka_build_env python=3.12
-          conda activate nuitka_build_env
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate StockD_build_cpu
+          TF_ROOT=$(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__))")
           
-          # 2. Install Tools & Deps
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
-          pip install --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
-          
-          # 3. Build Backend
           cd ML
-          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=6 --plugin-enable=anti-bloat --include-package=tensorflow
+          python -m nuitka main.py --standalone --lto=no --assume-yes-for-downloads --output-dir=dist --jobs=6 --low-memory --include-package=tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT" --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
-          chmod 755 ../backend/sage_backend && cp -r artifacts ../backend/ 2>/dev/null || true
+          chmod 755 ../backend/sage_backend
+          cp -r artifacts *.keras *.pkl ml_config.py ../backend/ 2>/dev/null || true
           rm -rf dist && cd ..
 
-          # 4. Flutter Build
           flutter config --enable-linux-desktop
           flutter build linux --release --build-name=1.2.0
-          
-          # 5. Inject Backend
           BUNDLE="build/linux/$ARCH/release/bundle"
-          mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
-          cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
-          
-          # 6. Desktop Entry & Packaging
-          mkdir -p linux_desktop && cat > linux_desktop/stockd.desktop << EOF
-          [Desktop Entry]
-          Name=StockD
-          Exec=/usr/bin/stockd
-          Icon=stockd
-          Type=Application
-          Categories=Finance;Education;
-          EOF
-          
+          mkdir -p $BUNDLE/data/flutter_assets/backend_bundle && cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
+          echo -e "[Desktop Entry]\nName=StockD\nExec=/usr/bin/stockd\nIcon=stockd\nType=Application\nCategories=Finance;Utility;" > $BUNDLE/stockd.desktop
+
           DEB_ROOT="pkg_deb"
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/pixmaps
           cp -r $BUNDLE/* $DEB_ROOT/usr/lib/StockD-1.2.0/
-          cp linux_desktop/stockd.desktop $DEB_ROOT/usr/share/applications/
-          cp assets/images/StockD.png $DEB_ROOT/usr/share/pixmaps/stockd.png
-          ln -s /usr/lib/StockD-1.2.0/stockd $DEB_ROOT/usr/bin/stockd
+          ln -s /usr/lib/StockD-1.2.0/sage_backend $DEB_ROOT/usr/bin/stockd
+          cp $BUNDLE/stockd.desktop $DEB_ROOT/usr/share/applications/
+          cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
           cat > $DEB_ROOT/DEBIAN/control << EOF
-          Package: StockD-$JOB_ID
+          Package: stockd-linux-$JOB_ID
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
           Description: StockD AI
-          Depends: libgtk-3-0
           EOF
-          dpkg-deb --root-owner-group --build $DEB_ROOT StockD-$JOB_ID-1.2.0.deb
-          
+          dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-$JOB_ID-1.2.0.deb
+
           RPM_ROOT=$HOME/rpmbuild && RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-1.2.0"
-          mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_ROOT/SPECS $RPM_STAGE/usr/share/pixmaps $RPM_STAGE/usr/share/applications
+          mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_ROOT/SPECS
           cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
-          cp linux_desktop/stockd.desktop $RPM_STAGE/usr/share/applications/
-          cp assets/images/StockD.png $RPM_STAGE/usr/share/pixmaps/stockd.png
-          ln -s /usr/lib/StockD-1.2.0/stockd $RPM_STAGE/usr/bin/stockd
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
-          Name: StockD-$JOB_ID
+          Name: stockd-linux-$JOB_ID
           Version: 1.2.0
           Release: 1
           Summary: StockD AI
-          BuildArch: $RPM
-          Requires: gtk3
-          %description
-          AI Coach
+          %global __requires_exclude_from ^/usr/lib/StockD-1.2.0/.*$
           %files
           /usr/lib/StockD-1.2.0
-          /usr/bin/stockd
-          /usr/share/applications/stockd.desktop
-          /usr/share/pixmaps/stockd.png
           EOF
-          rpmbuild -bb --define "_topdir $RPM_ROOT" --buildroot "$RPM_STAGE" $RPM_ROOT/SPECS/StockD.spec
-          mv $RPM_ROOT/RPMS/$RPM/*.rpm ./StockD-$JOB_ID-1.2.0.rpm
+          rpmbuild -bb --nodeps --define "_topdir $RPM_ROOT" --buildroot "$RPM_STAGE" $RPM_ROOT/SPECS/StockD.spec
+          mv $RPM_ROOT/RPMS/$RPM/*.rpm ./StockD-linux-$JOB_ID-1.2.0.rpm
 
-      - name: Split and Upload
-        run: |
-          for f in *.{deb,rpm}; do
-            [ -e "$f" ] || continue
-            size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
-            if [ "$size" -gt 1990000000 ]; then split -b 1900M "$f" "${f}.part_"; rm "$f"; fi
-          done
-          gh release upload latest *.deb *.rpm *.part_* --clobber
-            
       - name: Cleanup
         if: always()
-        run: |
-          source /home/gautam/anaconda3/etc/profile.d/conda.sh
-          conda env remove -n nuitka_build_env
-          rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/
+        run: rm -rf pkg_deb $HOME/rpmbuild build backend
+
+      - name: Deploy
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          make_latest: true
+          overwrite: true
+          fail_on_unmatched_files: true
+          files: |
+            *.deb
+            *.rpm
 
   # ==========================================
   # JOB: X64 NVIDIA (Self-Hosted)
@@ -125,98 +100,75 @@ jobs:
   linux-x64-nvidia:
     if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'linux-x64-nvidia' }}
     runs-on: self-hosted
-    env: { PKGS: "tensorflow[and-cuda]", ARCH: "x64", DEB: "amd64", RPM: "x86_64", JOB_ID: "x64-nvidia" }
+    env: {ARCH: "x64", DEB: "amd64", RPM: "x86_64", JOB_ID: "x64-nvidia" }
     steps:
       - uses: actions/checkout@v4
       - name: Build and Package
         shell: bash
         run: |
-          source /home/gautam/anaconda3/etc/profile.d/conda.sh
-          conda create -y -n nuitka_build_env python=3.12
-          conda activate nuitka_build_env
-          
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
-          pip install --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
-          
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate StockD_build_cuda
+          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(find /home/gautam/miniconda3/envs/StockD_build_cuda -name "lib" | grep "nvidia" | tr '\n' ':')
+          TF_ROOT=$(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__))")
+
           cd ML
-          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=6 --plugin-enable=anti-bloat --include-package=tensorflow
+          python -m nuitka main.py --standalone --lto=no --assume-yes-for-downloads --output-dir=dist --jobs=6 --low-memory --include-package=tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT" --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite,torch
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
           mv ../backend/main ../backend/sage_backend 2>/dev/null || mv ../backend/main.bin ../backend/sage_backend 2>/dev/null || true
-          chmod 755 ../backend/sage_backend && cp -r artifacts ../backend/ 2>/dev/null || true
+          chmod 755 ../backend/sage_backend
+          cp -r artifacts *.keras *.pkl ml_config.py ../backend/ 2>/dev/null || true
           rm -rf dist && cd ..
-
+          
           flutter config --enable-linux-desktop
           flutter build linux --release --build-name=1.2.0
-          
-          BUNDLE="build/linux/x64/release/bundle"
-          mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
-          cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
-          
-          mkdir -p linux_desktop && cat > linux_desktop/stockd.desktop << EOF
-          [Desktop Entry]
-          Name=StockD
-          Exec=/usr/bin/stockd
-          Icon=stockd
-          Type=Application
-          Categories=Finance;Education;
-          EOF
-          
+          BUNDLE="build/linux/$ARCH/release/bundle"
+          mkdir -p $BUNDLE/data/flutter_assets/backend_bundle && cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
+          echo -e "[Desktop Entry]\nName=StockD\nExec=/usr/bin/stockd\nIcon=stockd\nType=Application\nCategories=Finance;Utility;" > $BUNDLE/stockd.desktop
+
           DEB_ROOT="pkg_deb"
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/pixmaps
           cp -r $BUNDLE/* $DEB_ROOT/usr/lib/StockD-1.2.0/
-          cp linux_desktop/stockd.desktop $DEB_ROOT/usr/share/applications/
-          cp assets/images/StockD.png $DEB_ROOT/usr/share/pixmaps/stockd.png
-          ln -s /usr/lib/StockD-1.2.0/stockd $DEB_ROOT/usr/bin/stockd
+          ln -s /usr/lib/StockD-1.2.0/sage_backend $DEB_ROOT/usr/bin/stockd
+          cp $BUNDLE/stockd.desktop $DEB_ROOT/usr/share/applications/
+          cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
           cat > $DEB_ROOT/DEBIAN/control << EOF
-          Package: StockD-$JOB_ID
+          Package: stockd-linux-$JOB_ID
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
           Description: StockD AI
-          Depends: libgtk-3-0
           EOF
-          dpkg-deb --root-owner-group --build $DEB_ROOT StockD-$JOB_ID-1.2.0.deb
-          
+          dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-$JOB_ID-1.2.0.deb
+
           RPM_ROOT=$HOME/rpmbuild && RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-1.2.0"
-          mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_ROOT/SPECS $RPM_STAGE/usr/share/pixmaps $RPM_STAGE/usr/share/applications
+          mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_ROOT/SPECS
           cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
-          cp linux_desktop/stockd.desktop $RPM_STAGE/usr/share/applications/
-          cp assets/images/StockD.png $RPM_STAGE/usr/share/pixmaps/stockd.png
-          ln -s /usr/lib/StockD-1.2.0/stockd $RPM_STAGE/usr/bin/stockd
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
-          Name: StockD-$JOB_ID
+          Name: stockd-linux-$JOB_ID
           Version: 1.2.0
           Release: 1
           Summary: StockD AI
-          BuildArch: $RPM
-          Requires: gtk3
-          %description
-          AI Coach
+          %global __requires_exclude_from ^/usr/lib/StockD-1.2.0/.*$
           %files
           /usr/lib/StockD-1.2.0
-          /usr/bin/stockd
-          /usr/share/applications/stockd.desktop
-          /usr/share/pixmaps/stockd.png
           EOF
-          rpmbuild -bb --define "_topdir $RPM_ROOT" --buildroot "$RPM_STAGE" $RPM_ROOT/SPECS/StockD.spec
-          mv $RPM_ROOT/RPMS/$RPM/*.rpm ./StockD-$JOB_ID-1.2.0.rpm
+          rpmbuild -bb --nodeps --define "_topdir $RPM_ROOT" --buildroot "$RPM_STAGE" $RPM_ROOT/SPECS/StockD.spec
+          mv $RPM_ROOT/RPMS/$RPM/*.rpm ./StockD-linux-$JOB_ID-1.2.0.rpm
 
-      - name: Split and Upload
-        run: |
-          for f in *.{deb,rpm}; do
-            [ -e "$f" ] || continue
-            size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
-            if [ "$size" -gt 1990000000 ]; then split -b 1900M "$f" "${f}.part_"; rm "$f"; fi
-          done
-          gh release upload latest *.deb *.rpm *.part_* --clobber
-            
       - name: Cleanup
         if: always()
-        run: |
-          source /home/gautam/anaconda3/etc/profile.d/conda.sh
-          conda env remove -n nuitka_build_env
-          rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/
+        run: rm -rf pkg_deb $HOME/rpmbuild build backend
+
+      - name: Deploy
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          make_latest: true
+          overwrite: true
+          fail_on_unmatched_files: true
+          files: |
+            *.deb
+            *.rpm
 
   # ==========================================
   # JOB: ARM64 (Cloud-Hosted)
@@ -227,95 +179,70 @@ jobs:
     env: { PKGS: "tensorflow", ARCH: "arm64", DEB: "arm64", RPM: "aarch64", JOB_ID: "arm64" }
     steps:
       - uses: actions/checkout@v4
-      - name: Manual Flutter Setup
-        shell: bash
+      - name: Flutter Setup
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git curl unzip xz-utils zip libglu1-mesa clang cmake ninja-build pkg-config libgtk-3-dev
+          sudo apt-get update && sudo apt-get install -y git curl unzip xz-utils zip libglu1-mesa clang cmake ninja-build pkg-config libgtk-3-dev
           git clone https://github.com/flutter/flutter.git -b stable $HOME/flutter
           echo "$HOME/flutter/bin" >> $GITHUB_PATH
-          export PATH="$PATH:$HOME/flutter/bin"
-          flutter config --enable-linux-desktop
-          flutter doctor
-
       - name: Build and Package
-        shell: bash
         run: |
           export PATH="$PATH:$HOME/flutter/bin"
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
-          sudo pip3 install --break-system-packages --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
+          python3 -m pip install nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
           
-          cd ML
-          python3 -m nuitka main.py --standalone --output-dir=dist --jobs=2 --plugin-enable=anti-bloat --include-package=tensorflow --clang
-          cd ..
+          python3 -m nuitka ML/main.py --standalone --output-dir=dist --jobs=2 --low-memory --clang --include-package=tensorflow --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite
           
-          mkdir -p backend && cp -r ML/dist/main.dist/* backend/
+          mkdir -p backend && cp -r dist/main.dist/* backend/
+          cp ML/*.keras ML/*.pkl ML/ml_config.py backend/
           mv backend/main backend/sage_backend 2>/dev/null || mv backend/main.bin backend/sage_backend 2>/dev/null || true
           chmod 755 backend/sage_backend
           
           flutter build linux --release --build-name=1.2.0
           BUNDLE="build/linux/arm64/release/bundle"
-          mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
-          cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
-          
-          mkdir -p linux_desktop && cat > linux_desktop/stockd.desktop << EOF
-          [Desktop Entry]
-          Name=StockD
-          Exec=/usr/bin/stockd
-          Icon=stockd
-          Type=Application
-          Categories=Finance;Education;
-          EOF
-          
+          mkdir -p $BUNDLE/data/flutter_assets/backend_bundle && cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
+          echo -e "[Desktop Entry]\nName=StockD\nExec=/usr/bin/stockd\nIcon=stockd\nType=Application\nCategories=Finance;Utility;" > $BUNDLE/stockd.desktop
+
           DEB_ROOT="pkg_deb"
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/pixmaps
           cp -r $BUNDLE/* $DEB_ROOT/usr/lib/StockD-1.2.0/
-          cp linux_desktop/stockd.desktop $DEB_ROOT/usr/share/applications/
-          cp assets/images/StockD.png $DEB_ROOT/usr/share/pixmaps/stockd.png
-          ln -s /usr/lib/StockD-1.2.0/stockd $DEB_ROOT/usr/bin/stockd
+          ln -s /usr/lib/StockD-1.2.0/sage_backend $DEB_ROOT/usr/bin/stockd
+          cp $BUNDLE/stockd.desktop $DEB_ROOT/usr/share/applications/
+          cp assets/images/stockd.png $DEB_ROOT/usr/share/pixmaps/stockd.png || touch $DEB_ROOT/usr/share/pixmaps/stockd.png
           cat > $DEB_ROOT/DEBIAN/control << EOF
-          Package: StockD-$JOB_ID
+          Package: stockd-linux-$JOB_ID
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
           Description: StockD AI
-          Depends: libgtk-3-0
           EOF
-          dpkg-deb --root-owner-group --build $DEB_ROOT StockD-$JOB_ID-1.2.0.deb
+          dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-$JOB_ID-1.2.0.deb
           
           RPM_ROOT=$HOME/rpmbuild && RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-1.2.0"
-          mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_ROOT/SPECS $RPM_STAGE/usr/share/pixmaps $RPM_STAGE/usr/share/applications
+          mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_ROOT/SPECS
           cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
-          cp linux_desktop/stockd.desktop $RPM_STAGE/usr/share/applications/
-          cp assets/images/StockD.png $RPM_STAGE/usr/share/pixmaps/stockd.png
-          ln -s /usr/lib/StockD-1.2.0/stockd $RPM_STAGE/usr/bin/stockd
           cat > $RPM_ROOT/SPECS/StockD.spec << EOF
-          Name: StockD-$JOB_ID
+          Name: stockd-linux-$JOB_ID
           Version: 1.2.0
           Release: 1
           Summary: StockD AI
-          BuildArch: aarch64
-          Requires: gtk3
-          %description
-          AI Coach
+          %global __requires_exclude_from ^/usr/lib/StockD-1.2.0/.*$
           %files
           /usr/lib/StockD-1.2.0
-          /usr/bin/stockd
-          /usr/share/applications/stockd.desktop
-          /usr/share/pixmaps/stockd.png
           EOF
-          rpmbuild -bb --define "_topdir $RPM_ROOT" --buildroot "$RPM_STAGE" $RPM_ROOT/SPECS/StockD.spec
-          mv $RPM_ROOT/RPMS/aarch64/*.rpm ./StockD-$JOB_ID-1.2.0.rpm
+          rpmbuild -bb --nodeps --define "_topdir $RPM_ROOT" --buildroot "$RPM_STAGE" $RPM_ROOT/SPECS/StockD.spec
+          mv $RPM_ROOT/RPMS/aarch64/*.rpm ./StockD-linux-$JOB_ID-1.2.0.rpm
 
-      - name: Split and Upload
-        run: |
-          for f in *.{deb,rpm}; do
-            [ -e "$f" ] || continue
-            size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
-            if [ "$size" -gt 1990000000 ]; then split -b 1900M "$f" "${f}.part_"; rm "$f"; fi
-          done
-          gh release upload latest *.deb *.rpm *.part_* --clobber
-            
       - name: Cleanup
         if: always()
-        run: rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/
+        run: rm -rf pkg_deb $HOME/rpmbuild build backend
+
+      - name: Deploy
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          make_latest: true
+          overwrite: true
+          fail_on_unmatched_files: true
+          files: |
+            *.deb
+            *.rpm
