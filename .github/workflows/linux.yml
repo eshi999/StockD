@@ -27,8 +27,9 @@ jobs:
         shell: bash
         run: |
           # Initialize Conda and activate your specific environment
-          source $(conda info --base)/etc/profile.d/conda.sh
-          conda activate your_env_name || { echo "Conda env not found"; exit 1; }
+          source ~/anaconda3/etc/profile.d/conda.sh || source /opt/anaconda3/etc/profile.d/conda.sh
+          conda create --name StockD_build python=3.12
+          conda activate StockD_build|| { echo "Conda env not found"; exit 1; }
           
           pip install --no-cache-dir nuitka zstandard ordered-set $PKGS scikit-learn pandas yfinance fastapi uvicorn
           
@@ -137,9 +138,9 @@ jobs:
       - name: Build and Package Backend (Nuitka)
         shell: bash
         run: |
-          # Initialize Conda and activate your specific environment
-          source $(conda info --base)/etc/profile.d/conda.sh
-          conda activate your_env_name || { echo "Conda env not found"; exit 1; }
+          source ~/anaconda3/etc/profile.d/conda.sh || source /opt/anaconda3/etc/profile.d/conda.sh
+          conda create --name StockD_build python=3.12
+          conda activate StockD_build|| { echo "Conda env not found"; exit 1; }
           
           pip install --no-cache-dir nuitka zstandard ordered-set $PKGS scikit-learn pandas yfinance fastapi uvicorn
           
