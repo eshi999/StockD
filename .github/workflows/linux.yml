@@ -30,9 +30,7 @@ jobs:
       - name: Build and Package
         shell: bash
         run: |
-          source ~/miniconda3/etc/profile.d/conda.sh && conda activate StockD_build_cpu
-          TF_ROOT=$(python -c "import tensorflow as tf, os; print(os.path.dirname(tf.__file__))")
-          cd ML && python -m nuitka main.py --standalone --lto=no --output-dir=dist --include-package=tensorflow --plugin-enable=tensorflow --low-memory --include-plugin-directory="$TF_ROOT"
+          cd ML && python -m nuitka main.py --standalone --lto=no --output-dir=dist --include-package=tensorflow --plugin-enable=tensorflow --low-memory 
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/ && mv ../backend/main ../backend/sage_backend 2>/dev/null || true
           chmod +x ../backend/sage_backend && cd ..
           python3 -m venv backend/python_env && source backend/python_env/bin/activate && pip install -U pip && pip install fastapi uvicorn numpy pandas scipy peewee yfinance
@@ -103,9 +101,7 @@ jobs:
       - name: Build and Package
         shell: bash
         run: |
-          source ~/miniconda3/etc/profile.d/conda.sh && conda activate StockD_build_cuda && unset LD_LIBRARY_PATH
-          TF_ROOT=$(python -c "import tensorflow as tf, os; print(os.path.dirname(tf.__file__))")
-          cd ML && python -m nuitka main.py --standalone --low-memory --lto=no --output-dir=dist --include-package=tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT"
+          cd ML && python -m nuitka main.py --standalone --low-memory --lto=no --output-dir=dist --include-package=tensorflow --plugin-enable=tensorflow 
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/ && mv ../backend/main ../backend/sage_backend 2>/dev/null || true
           chmod +x ../backend/sage_backend && cd ..
           python3 -m venv backend/python_env && source backend/python_env/bin/activate && pip install -U pip && pip install fastapi uvicorn numpy pandas scipy peewee yfinance
