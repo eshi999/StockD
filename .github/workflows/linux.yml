@@ -26,12 +26,17 @@ jobs:
       - name: Build and Package
         shell: bash
         run: |
-          # 1. Install System Dependencies
-          sudo apt-get update
-          sudo apt-get install -y python3-numpy python3-pandas python3-scipy python3-protobuf python3-typing-extensions clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
-          sudo pip3 install --break-system-packages --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee ${PKGS}
+          # 1. Setup New Conda Environment
+          source /home/gautam/anaconda3/etc/profile.d/conda.sh
+          conda create -y -n nuitka_build_env python=3.12
+          conda activate nuitka_build_env
           
-          # 2. Build Backend
+          # 2. Install Tools & Deps
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
+          pip install --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
+          
+          # 3. Build Backend
           cd ML
           python3 -m nuitka main.py --standalone --output-dir=dist --jobs=4 --plugin-enable=anti-bloat --include-package=tensorflow
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
@@ -39,16 +44,16 @@ jobs:
           chmod 755 ../backend/sage_backend && cp -r artifacts ../backend/ 2>/dev/null || true
           rm -rf dist && cd ..
 
-          # 3. Flutter Build
+          # 4. Flutter Build
           flutter config --enable-linux-desktop
           flutter build linux --release --build-name=1.2.0
           
-          # 4. Inject Backend
+          # 5. Inject Backend
           BUNDLE="build/linux/$ARCH/release/bundle"
           mkdir -p $BUNDLE/data/flutter_assets/backend_bundle
           cp -r backend/* $BUNDLE/data/flutter_assets/backend_bundle/
           
-          # 5. Desktop Entry
+          # 6. Desktop Entry & Packaging
           mkdir -p linux_desktop && cat > linux_desktop/stockd.desktop << EOF
           [Desktop Entry]
           Name=StockD
@@ -58,7 +63,6 @@ jobs:
           Categories=Finance;Education;
           EOF
           
-          # 6. DEB Packaging
           DEB_ROOT="pkg_deb"
           mkdir -p $DEB_ROOT/DEBIAN $DEB_ROOT/usr/bin $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/share/applications $DEB_ROOT/usr/share/pixmaps
           cp -r $BUNDLE/* $DEB_ROOT/usr/lib/StockD-1.2.0/
@@ -75,7 +79,6 @@ jobs:
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-$JOB_ID-1.2.0.deb
           
-          # 7. RPM Packaging
           RPM_ROOT=$HOME/rpmbuild && RPM_STAGE="$RPM_ROOT/BUILDROOT/StockD-1.2.0"
           mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_ROOT/SPECS $RPM_STAGE/usr/share/pixmaps $RPM_STAGE/usr/share/applications
           cp -r $BUNDLE/* $RPM_STAGE/usr/lib/StockD-1.2.0/
@@ -103,16 +106,18 @@ jobs:
       - name: Split and Upload
         run: |
           for f in *.{deb,rpm}; do
-            if [ -f "$f" ]; then
-               size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
-               if [ "$size" -gt 1990000000 ]; then split -b 1900M "$f" "${f}.part_"; rm "$f"; fi
-            fi
+            [ -e "$f" ] || continue
+            size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
+            if [ "$size" -gt 1990000000 ]; then split -b 1900M "$f" "${f}.part_"; rm "$f"; fi
           done
           gh release upload latest *.deb *.rpm *.part_* --clobber
             
       - name: Cleanup
         if: always()
-        run: rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/
+        run: |
+          source /home/gautam/anaconda3/etc/profile.d/conda.sh
+          conda env remove -n nuitka_build_env
+          rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/
 
   # ==========================================
   # JOB: X64 NVIDIA (Self-Hosted)
@@ -126,9 +131,13 @@ jobs:
       - name: Build and Package
         shell: bash
         run: |
+          source /home/gautam/anaconda3/etc/profile.d/conda.sh
+          conda create -y -n nuitka_build_env python=3.12
+          conda activate nuitka_build_env
+          
           sudo apt-get update
-          sudo apt-get install -y python3-numpy python3-pandas python3-scipy python3-protobuf python3-typing-extensions clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
-          sudo pip3 install --break-system-packages --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee ${PKGS}
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
+          pip install --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
           
           cd ML
           python3 -m nuitka main.py --standalone --output-dir=dist --jobs=4 --plugin-enable=anti-bloat --include-package=tensorflow
@@ -204,7 +213,10 @@ jobs:
             
       - name: Cleanup
         if: always()
-        run: rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/
+        run: |
+          source /home/gautam/anaconda3/etc/profile.d/conda.sh
+          conda env remove -n nuitka_build_env
+          rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/
 
   # ==========================================
   # JOB: ARM64 (Cloud-Hosted)
@@ -222,7 +234,6 @@ jobs:
           sudo apt-get install -y git curl unzip xz-utils zip libglu1-mesa clang cmake ninja-build pkg-config libgtk-3-dev
           git clone https://github.com/flutter/flutter.git -b stable $HOME/flutter
           echo "$HOME/flutter/bin" >> $GITHUB_PATH
-          # Ensure path is updated for current shell
           export PATH="$PATH:$HOME/flutter/bin"
           flutter config --enable-linux-desktop
           flutter doctor
@@ -231,8 +242,8 @@ jobs:
         shell: bash
         run: |
           export PATH="$PATH:$HOME/flutter/bin"
-          sudo apt-get install -y python3-numpy python3-pandas python3-scipy python3-protobuf python3-typing-extensions clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
-          sudo pip3 install --break-system-packages --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee ${PKGS}
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev
+          sudo pip3 install --break-system-packages --ignore-installed nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas ${PKGS}
           
           cd ML
           export CFLAGS="-mlong-calls -fPIC"
