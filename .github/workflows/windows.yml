@@ -11,17 +11,10 @@ jobs:
       - name: Build SAGE Backend (Nuitka)
         shell: powershell
         run: |
-          pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance Pillow
+          pip install --upgrade pip
+          pip install nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance
           
-          # Generate Icon
-           python -c "
-              from PIL import Image
-                  img = Image.open('assets/images/StockD.png').convert('RGBA')
-                  img.save('nsis_icon.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])
-                  print('Icon created successfully')
-          "
-          
-          # Build Backend with embedded icon
+          # Build Backend (Icon injection removed)
           python -m nuitka ML/main.py --standalone `
             --assume-yes-for-downloads `
             --output-dir=dist `
@@ -29,7 +22,6 @@ jobs:
             --plugin-enable=anti-bloat `
             --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite `
             --include-package=tensorflow `
-            --windows-icon-from-ico="nsis_icon.ico" `
             --msvc=latest
 
           # Preserve Structure
@@ -57,12 +49,16 @@ jobs:
       - name: Inject Backend & Package (NSIS)
         shell: powershell
         run: |
+          # Generate Icon specifically for NSIS here
+          pip install Pillow
+          python -c "from PIL import Image; img = Image.open('assets/images/StockD.png').convert('RGBA'); img.save('nsis_icon.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])"
+          
           $target = "build\windows\x64\runner\Release\data\flutter_assets\backend_bundle"
           New-Item -ItemType Directory -Force -Path $target
           Copy-Item -Recurse -Path "backend\main.dist\*" -Destination $target -Force
           Remove-Item -Recurse -Force -Path "backend"
 
-          # Corrected NSIS Script with Uninstall Section
+          # NSIS Script with Uninstall Section
           $nsisScript = @"
           !include "MUI2.nsh"
           Name "StockD"
