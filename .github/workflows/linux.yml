@@ -13,10 +13,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: self-hosted-linux-build
-  cancel-in-progress: false
-
 jobs:
   # ==========================================
   # JOB: X64 UNIVERSAL (Self-Hosted)
