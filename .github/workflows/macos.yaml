@@ -108,7 +108,7 @@ jobs:
           tag_name: latest
           name: "StockD-1.2.0"
           make_latest: true
-          overwrite_files: false
+          overwrite_files: true
           fail_on_unmatched_files: false
           files: |
             StockD-mac-arm.dmg
@@ -214,7 +214,7 @@ jobs:
           tag_name: latest
           name: "StockD-1.2.0"
           make_latest: true
-          overwrite_files: false
+          overwrite_files: true
           fail_on_unmatched_files: false
           files: |
             StockD-mac-intel.dmg
