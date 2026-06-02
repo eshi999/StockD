@@ -40,12 +40,10 @@ jobs:
             --standalone \
             --plugin-enable=tensorflow \
             --plugin-enable=anti-bloat \
-            --lto=no \
-            --python-exe=$(which python3) \
-            --python-flag=no_site \
+            --lto=yes \
             --assume-yes-for-downloads \
             --output-dir=dist \
-            --jobs=$JOBS \
+            --jobs=6  \
             --low-memory
 
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
@@ -124,8 +122,6 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          source /home/gautam/anaconda3/etc/profile.d/conda.sh
-          conda env remove -n nuitka_build_env
           rm -rf build/ backend/ pkg_deb/ $HOME/rpmbuild/ linux_desktop/ dist/
 
   # ==========================================
