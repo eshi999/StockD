@@ -20,7 +20,7 @@ jobs:
   linux-x64-universal:
     if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'linux-x64-universal' }}
     runs-on: self-hosted
-    env: { PKGS: "tensorflow intel-extension-for-tensorflow[cpu]", ARCH: "x64", DEB: "amd64", RPM: "x86_64", JOB_ID: "x64-universal" }
+    env: {ARCH: "x64", DEB: "amd64", RPM: "x86_64", JOB_ID: "x64-universal" }
     steps:
       - uses: actions/checkout@v4
       - name: Build and Package Backend (Nuitka)
@@ -28,10 +28,9 @@ jobs:
         run: |
           # Initialize Conda and activate your specific environment
           source ~/anaconda3/etc/profile.d/conda.sh || source /opt/anaconda3/etc/profile.d/conda.sh
-          conda create --name StockD_build python=3.12
-          conda activate StockD_build|| { echo "Conda env not found"; exit 1; }
-          
-          pip install --no-cache-dir nuitka zstandard ordered-set $PKGS scikit-learn pandas yfinance fastapi uvicorn
+
+          # Activate existing environment (already created manually)
+          conda activate StockD_build_cpu
           
           cd ML
           python3 -m nuitka main.py \
@@ -132,17 +131,17 @@ jobs:
   linux-x64-nvidia:
     if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'linux-x64-nvidia' }}
     runs-on: self-hosted
-    env: { PKGS: "tensorflow[and-cuda]", ARCH: "x64", DEB: "amd64", RPM: "x86_64", JOB_ID: "x64-nvidia" }
+    env: {ARCH: "x64", DEB: "amd64", RPM: "x86_64", JOB_ID: "x64-nvidia" }
     steps:
       - uses: actions/checkout@v4
       - name: Build and Package Backend (Nuitka)
         shell: bash
         run: |
-          source ~/anaconda3/etc/profile.d/conda.sh || source /opt/anaconda3/etc/profile.d/conda.sh
-          conda create --name StockD_build python=3.12
-          conda activate StockD_build|| { echo "Conda env not found"; exit 1; }
-          
-          pip install --no-cache-dir nuitka zstandard ordered-set $PKGS scikit-learn pandas yfinance fastapi uvicorn
+          # Initialize conda
+            source ~/anaconda3/etc/profile.d/conda.sh || source /opt/anaconda3/etc/profile.d/conda.sh
+
+          # Activate existing environment (already created manually)
+          conda activate StockD_build_cuda
           
           cd ML
           python3 -m nuitka main.py \
