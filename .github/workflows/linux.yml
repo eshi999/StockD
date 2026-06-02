@@ -26,6 +26,8 @@ jobs:
       - name: Build and Package Backend (Nuitka)
         shell: bash
         run: |
+          export PYTHONNOUSERSITE=1
+          export PIP_REQUIRE_VIRTUALENV=false
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cpu
           export PYTHON=$(which python)
@@ -121,6 +123,8 @@ jobs:
       - name: Build and Package Backend (Nuitka)
         shell: bash
         run: |
+          export PYTHONNOUSERSITE=1
+          export PIP_REQUIRE_VIRTUALENV=false
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate StockD_build_cuda
           export PYTHON=$(which python)
