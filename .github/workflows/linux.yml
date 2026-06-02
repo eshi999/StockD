@@ -136,23 +136,24 @@ jobs:
       - name: Build and Package Backend (Nuitka)
         shell: bash
         run: |
-          # Initialize conda
-            source ~/anaconda3/etc/profile.d/conda.sh || source /opt/anaconda3/etc/profile.d/conda.sh
+         # Initialize conda
+         source ~/anaconda3/etc/profile.d/conda.sh || source /opt/anaconda3/etc/profile.d/conda.sh
 
           # Activate existing environment (already created manually)
           conda activate StockD_build_cuda
+
+          export PYTHON=$(which python)
+          export PIP=$(which pip)
           
           cd ML
-          python3 -m nuitka main.py \
+          python -m nuitka main.py \
             --standalone \
             --plugin-enable=tensorflow \
             --plugin-enable=anti-bloat \
-            --lto=no \
-            --python-exe=$(which python3) \
-            --python-flag=no_site \
+            --lto=yes \
             --assume-yes-for-downloads \
             --output-dir=dist \
-            --jobs=$JOBS \
+            --jobs=6 \
             --low-memory
 
           mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
