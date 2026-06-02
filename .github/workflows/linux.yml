@@ -31,7 +31,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y gcc g++ make cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev patchelf python3-venv
           python3 -m venv venv && source venv/bin/activate
-          pip install -U pip nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas tensorflow
+          pip install -U pip nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas tensorflow intel-extension-for-tensorflow
           
           TF_ROOT=$(python -c "import tensorflow as tf, os; print(os.path.dirname(tf.__file__))")
           cd ML && python -m nuitka main.py --standalone --lto=no --output-dir=dist --include-package=tensorflow --plugin-enable=tensorflow --include-plugin-directory="$TF_ROOT" --prefer-source-code
