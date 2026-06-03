@@ -80,7 +80,4 @@ def chat(req: ChatMessage):
         "disclaimer": "Educational information only. Not financial advice.",
     }
 
-# Auto-start when run as compiled binary or direct script,
-# but not when launched via 'uvicorn main:app' CLI
-if __name__ == "__main__" or Path(sys.executable).stem == "sage_backend":
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
+uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
