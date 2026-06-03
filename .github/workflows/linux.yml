@@ -1,4 +1,4 @@
-name: Linux Build - StockD (Python Standalone - Cloud)
+name: Linux Build
 
 on:
   workflow_dispatch:
@@ -15,43 +15,39 @@ permissions:
 
 jobs:
   # =========================================================
-  # X64 UNIVERSAL (Cloud)
+  # X64 UNIVERSAL (Cloud Runner)
   # =========================================================
   linux-x64-universal:
     if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'linux-x64-universal' }}
     runs-on: ubuntu-24.04
-    env: { TARGET: "linux-x64-universal", ARCH: "x64" }
+    env: { TARGET: "linux-x64-universal" }
     steps:
       - uses: actions/checkout@v4
+      - name: Setup Flutter
+        run: |
+          git clone https://github.com/flutter/flutter.git -b stable
+          echo "$PWD/flutter/bin" >> $GITHUB_PATH
       - name: Build and Package
         run: |
           sudo apt-get update && sudo apt-get install -y rpm dpkg-dev patchelf
-          git clone https://github.com/flutter/flutter.git -b stable
-          echo "$PWD/flutter/bin" >> $GITHUB_PATH
           flutter config --enable-linux-desktop
-          
           mkdir -p backend_bundle
           wget -q https://github.com/astral-sh/python-build-standalone/releases/download/20250317/cpython-3.12.9+20250317-x86_64-unknown-linux-gnu-install_only.tar.gz
           tar -xzf cpython-3.12.9+20250317-x86_64-unknown-linux-gnu-install_only.tar.gz -C backend_bundle/ --strip-components=1
-          
           ./backend_bundle/bin/python3 -m ensurepip
           ./backend_bundle/bin/pip install tensorflow intel-extension-for-tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy peewee
-          
           cp ML/main.py ML/sage_bridge.py ML/ml_config.py ML/sage_model.keras backend_bundle/ 2>/dev/null || true
           cp -r ML/artifacts/ backend_bundle/ 2>/dev/null || true
-          
           flutter build linux --release
           BUNDLE_DIR="build/linux/x64/release/bundle"
           mkdir -p "$BUNDLE_DIR/data/flutter_assets/backend_bundle"
           cp -r backend_bundle/* "$BUNDLE_DIR/data/flutter_assets/backend_bundle/"
-          
           cat > "$BUNDLE_DIR/data/flutter_assets/backend_bundle/sage_backend" << 'EOF'
           #!/bin/bash
           BUNDLE_DIR="$(dirname "$(readlink -f "$0")")"
           exec "$BUNDLE_DIR/python/bin/python3" "$BUNDLE_DIR/main.py"
           EOF
           chmod +x "$BUNDLE_DIR/data/flutter_assets/backend_bundle/sage_backend"
-          
           DEB_ROOT="pkg_deb"
           mkdir -p $DEB_ROOT/usr/lib/StockD-1.2.0 $DEB_ROOT/usr/bin $DEB_ROOT/DEBIAN
           cp -r $BUNDLE_DIR/* $DEB_ROOT/usr/lib/StockD-1.2.0/
@@ -68,7 +64,6 @@ jobs:
           Description: StockD AI Application
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-${{ env.TARGET }}-1.2.0.deb
-          
           RPM_ROOT=$HOME/rpmbuild && RPM_STAGE=$RPM_ROOT/BUILDROOT/StockD-1.2.0
           mkdir -p $RPM_STAGE/usr/lib/StockD-1.2.0 $RPM_STAGE/usr/bin $RPM_ROOT/SPECS
           cp -r $BUNDLE_DIR/* $RPM_STAGE/usr/lib/StockD-1.2.0/
@@ -100,11 +95,13 @@ jobs:
     env: { TARGET: "linux-x64-nvidia", ARCH: "x64" }
     steps:
       - uses: actions/checkout@v4
+      - name: Setup Flutter
+        run: |
+          git clone https://github.com/flutter/flutter.git -b stable
+          echo "$PWD/flutter/bin" >> $GITHUB_PATH
       - name: Build and Package
         run: |
           sudo apt-get update && sudo apt-get install -y rpm dpkg-dev patchelf
-          git clone https://github.com/flutter/flutter.git -b stable
-          echo "$PWD/flutter/bin" >> $GITHUB_PATH
           flutter config --enable-linux-desktop
           mkdir -p backend_bundle
           wget -q https://github.com/astral-sh/python-build-standalone/releases/download/20250317/cpython-3.12.9+20250317-x86_64-unknown-linux-gnu-install_only.tar.gz
