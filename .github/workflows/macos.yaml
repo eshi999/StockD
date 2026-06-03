@@ -101,11 +101,11 @@ EOF
           cp -r backend_bundle/* "$BUNDLE_FRAMEWORKS/backend_bundle/"
           
           cat > "$BUNDLE_FRAMEWORKS/backend_bundle/sage_launcher.sh" << 'EOF'
-#!/bin/bash
-BUNDLE_DIR="$(cd "$(dirname "$0")" && pwd)"
-export ML_DIR="$BUNDLE_DIR"
-exec "$BUNDLE_DIR/bin/python3" "$BUNDLE_DIR/main.py"
-EOF
+          #!/bin/bash
+          BUNDLE_DIR="$(cd "$(dirname "$0")" && pwd)"
+          export ML_DIR="$BUNDLE_DIR"
+          exec "$BUNDLE_DIR/bin/python3" "$BUNDLE_DIR/main.py"
+          EOF
           chmod +x "$BUNDLE_FRAMEWORKS/backend_bundle/sage_launcher.sh"
           
           brew install create-dmg
