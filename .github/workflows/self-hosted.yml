@@ -31,11 +31,15 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y gcc g++ make cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev rpm dpkg-dev patchelf
           
-          
           TF_ROOT=$(/home/gautam/linux_universal/bin/python -c "import tensorflow as tf, os; print(os.path.dirname(tf.__file__))")
           
           cd ML && /home/gautam/linux_universal/bin/python -m nuitka main.py --standalone --lto=no --output-dir=dist --include-package=tensorflow --include-plugin-directory="$TF_ROOT" --jobs=6 --low-memory --prefer-source-code
-          mkdir -p ../backend && cp -r dist/main.dist/* ../backend/ && mv ../backend/main ../backend/sage_backend 2>/dev/null || true
+          
+          mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
+          # Robust check for the binary name
+          if [ -f ../backend/main ]; then mv ../backend/main ../backend/sage_backend; 
+          elif [ -f ../backend/main.bin ]; then mv ../backend/main.bin ../backend/sage_backend;
+          else echo "Backend binary not found" && exit 1; fi
           chmod +x ../backend/sage_backend && cd ..
           
           flutter config --enable-linux-desktop && flutter build linux --release --build-name=1.2.0
@@ -68,6 +72,7 @@ jobs:
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
+          License: Proprietary
           Description: StockD AI Application
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-x64-universal-1.2.0.deb
@@ -108,7 +113,11 @@ jobs:
           
           TF_ROOT=$(/home/gautam/linux_nvidia/bin/python -c "import tensorflow as tf, os; print(os.path.dirname(tf.__file__))")
           cd ML && /home/gautam/linux_nvidia/bin/python -m nuitka main.py --standalone --lto=no --output-dir=dist --include-package=tensorflow  --include-plugin-directory="$TF_ROOT" --prefer-source-code --low-memory --jobs=6
-          mkdir -p ../backend && cp -r dist/main.dist/* ../backend/ && mv ../backend/main ../backend/sage_backend 2>/dev/null || true
+          
+          mkdir -p ../backend && cp -r dist/main.dist/* ../backend/
+          if [ -f ../backend/main ]; then mv ../backend/main ../backend/sage_backend;
+          elif [ -f ../backend/main.bin ]; then mv ../backend/main.bin ../backend/sage_backend;
+          else echo "Backend binary not found" && exit 1; fi
           chmod +x ../backend/sage_backend && cd ..
           
           flutter config --enable-linux-desktop && flutter build linux --release --build-name=1.2.0
@@ -139,6 +148,7 @@ jobs:
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
+          License: Proprietary
           Description: StockD AI Application
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-x64-nvidia-1.2.0.deb
@@ -179,7 +189,10 @@ jobs:
           pip install -U pip nuitka zstandard ordered-set yfinance fastapi uvicorn peewee blosc2 scipy numpy pandas tensorflow
           
           python3 -m nuitka ML/main.py --standalone --output-dir=dist --low-memory --prefer-source-code --clang
-          mkdir -p backend && cp -r dist/main.dist/* backend/ && mv backend/main backend/sage_backend 2>/dev/null || true
+          mkdir -p backend && cp -r dist/main.dist/* backend/
+          if [ -f backend/main ]; then mv backend/main backend/sage_backend;
+          elif [ -f backend/main.bin ]; then mv backend/main.bin backend/sage_backend;
+          else echo "Backend binary not found" && exit 1; fi
           chmod +x backend/sage_backend
           
           flutter build linux --release --build-name=1.2.0
@@ -210,6 +223,7 @@ jobs:
           Version: 1.2.0
           Architecture: $DEB
           Maintainer: Gautam Mahajan
+          License: Proprietary
           Description: StockD AI Application
           EOF
           dpkg-deb --root-owner-group --build $DEB_ROOT StockD-linux-arm64-1.2.0.deb
@@ -223,6 +237,7 @@ jobs:
           Name: stockd
           Version: 1.2.0
           Release: 1
+          License: Proprietary
           Summary: StockD AI Application
           License: Proprietary
           %description
