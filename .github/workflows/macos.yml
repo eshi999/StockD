@@ -30,7 +30,7 @@ jobs:
       - name: Assemble Backend & Build
         run: |
           mkdir -p backend_bundle/artifacts
-          curl -L "https://github.com/astral-sh/python-build-standalone/releases/download/20240107/cpython-3.12.1+20260510-aarch64-apple-darwin-install_only.tar.gz" -o python_mac.tar.gz
+          curl -L "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.12.13+20260510-aarch64-apple-darwin-install_only.tar.gz" -o python_mac.tar.gz
           tar -xzf python_mac.tar.gz -C backend_bundle/ --strip-components=1
           ./backend_bundle/bin/pip install tensorflow tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib
           cp ML/*.py backend_bundle/
@@ -81,7 +81,7 @@ jobs:
       - name: Assemble Backend & Build
         run: |
           mkdir -p backend_bundle/artifacts
-          curl -L "https://github.com/astral-sh/python-build-standalone/releases/download/20240107/cpython-3.12.1+20260510-x86_64-apple-darwin-install_only.tar.gz" -o python_mac.tar.gz
+          curl -L "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.12.13+20260510-x86_64-apple-darwin-install_only.tar.gz"
           tar -xzf python_mac.tar.gz -C backend_bundle/ --strip-components=1
           ./backend_bundle/bin/pip install tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib
           cp ML/*.py backend_bundle/
