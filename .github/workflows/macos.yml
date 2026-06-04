@@ -28,59 +28,75 @@ jobs:
           - arch: x64
             target: macos-x64
 
-    if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == matrix.target }}
+    env:
+      BUILD_TARGET: ${{ github.event.inputs.build_target }}
 
     steps:
       - uses: actions/checkout@v4
 
-      # -----------------------------
-      # FORCE macOS 11 ACROSS PROJECT
-      # -----------------------------
+      # -------------------------------------------------
+      # SAFE MATRIX FILTER (FIXES YOUR ORIGINAL ISSUE)
+      # -------------------------------------------------
+      - name: Matrix filter (skip unwanted builds)
+        run: |
+          set -e
+
+          echo "Requested: $BUILD_TARGET"
+          echo "Current matrix target: ${{ matrix.target }}"
+
+          if [ "$BUILD_TARGET" != "all" ] && [ "$BUILD_TARGET" != "${{ matrix.target }}" ]; then
+            echo "Skipping this job (matrix filter)"
+            exit 0
+          fi
+
+      # -------------------------------------------------
+      # FORCE macOS 11 ACROSS ENTIRE FLUTTER STACK
+      # -------------------------------------------------
       - name: Enforce macOS 11 Deployment Target
         run: |
           set -e
 
-          echo "Forcing macOS 11 deployment target across Flutter + Xcode + Pods"
+          echo "Forcing macOS 11 deployment target"
 
-          # Xcode project enforcement
           find . -name "project.pbxproj" -exec sed -i '' \
             's/MACOSX_DEPLOYMENT_TARGET = .*/MACOSX_DEPLOYMENT_TARGET = 11.0;/g' {} +
 
-          # Flutter xcconfig enforcement
           mkdir -p macos/Flutter
 
           for f in Debug Release Profile; do
             FILE="macos/Flutter/Flutter-${f}.xcconfig"
             touch "$FILE"
-            grep -q "MACOSX_DEPLOYMENT_TARGET" "$FILE" && \
-              sed -i '' 's/MACOSX_DEPLOYMENT_TARGET=.*/MACOSX_DEPLOYMENT_TARGET=11.0/' "$FILE" || \
+
+            if grep -q "MACOSX_DEPLOYMENT_TARGET" "$FILE"; then
+              sed -i '' 's/MACOSX_DEPLOYMENT_TARGET=.*/MACOSX_DEPLOYMENT_TARGET=11.0/' "$FILE"
+            else
               echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$FILE"
+            fi
           done
 
-          # CocoaPods enforcement
           cd macos
           sed -i '' 's/platform :osx, .*/platform :osx, "11.0"/g' Podfile || true
           grep -q "platform :osx" Podfile || echo 'platform :osx, "11.0"' >> Podfile
           cd ..
 
-      # -----------------------------
+      # -------------------------------------------------
       # FLUTTER SETUP
-      # -----------------------------
+      # -------------------------------------------------
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Install Dependencies
+      - name: Install Tools
         run: |
           brew install npm
           npm install -g create-dmg
 
-      # -----------------------------
-      # BUILD BACKEND + APP
-      # -----------------------------
-      - name: Build Backend & Flutter App
+      # -------------------------------------------------
+      # BUILD BACKEND (ARCH SAFE)
+      # -------------------------------------------------
+      - name: Build Backend & App
         run: |
           set -e
 
@@ -110,10 +126,10 @@ jobs:
           COMMON_DEPS="fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib"
 
           if [ "$ARCH" = "arm64" ]; then
-            echo "Installing ARM64 stack (tensorflow + tensorflow-metal)"
+            echo "ARM build: installing tensorflow + tensorflow-metal"
             $PIP install tensorflow tensorflow-metal $COMMON_DEPS
           else
-            echo "Installing Intel stack (CPU-only TensorFlow)"
+            echo "Intel build: installing CPU-only tensorflow"
             $PIP install tensorflow $COMMON_DEPS
           fi
 
@@ -124,9 +140,9 @@ jobs:
 
           codesign --force --deep --sign - "backend_bundle_${ARCH}/bin/python3"
 
-          # -----------------------------
+          # -------------------------------------------------
           # FLUTTER BUILD (macOS 11 SAFE)
-          # -----------------------------
+          # -------------------------------------------------
           flutter config --enable-macos-desktop
           flutter clean
           rm -rf build/macos
@@ -146,9 +162,6 @@ jobs:
 
           rm -f "$APP_DIR/Icon\r" || true
 
-          # -----------------------------
-          # BACKEND LAUNCHER
-          # -----------------------------
           cat > "$BUNDLE_DIR/sage_launcher.sh" << 'EOF'
           #!/bin/bash
           SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -179,9 +192,6 @@ jobs:
 
           chmod +x "$BUNDLE_DIR/sage_launcher.sh"
 
-          # -----------------------------
-          # ICON
-          # -----------------------------
           mkdir -p StockD.iconset
 
           sips -z 512 512 assets/images/StockD.png --out StockD.iconset/icon_512x512.png
@@ -193,9 +203,6 @@ jobs:
 
           cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 
-          # -----------------------------
-          # DMG
-          # -----------------------------
           create-dmg \
             --volname "StockD" \
             --volicon StockD.icns \
@@ -206,9 +213,9 @@ jobs:
             "StockD-macOS-${ARCH}.dmg" \
             "$APP_DIR"
 
-      # -----------------------------
+      # -------------------------------------------------
       # RELEASE
-      # -----------------------------
+      # -------------------------------------------------
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
