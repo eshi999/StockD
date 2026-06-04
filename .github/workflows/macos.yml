@@ -37,7 +37,7 @@ jobs:
       - name: Install Dependencies
         run: |
           set -e
-          brew install npm
+          brew install npm imagemagick
           npm install -g create-dmg
 
       - name: Assemble Backend & Build
@@ -77,7 +77,7 @@ jobs:
           cp -R backend_bundle/* "$BUNDLE_DIR/"
 
           # =========================
-          # SAFE echo launcher (FIXED)
+          # SAFE echo launcher
           # =========================
           echo '#!/bin/bash' > "$BUNDLE_DIR/sage_launcher.sh"
           echo 'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"' >> "$BUNDLE_DIR/sage_launcher.sh"
@@ -88,22 +88,30 @@ jobs:
           chmod +x "$BUNDLE_DIR/sage_launcher.sh"
 
           # =========================
-          # ICON FIX
+          # ICON (ImageMagick FIX)
           # =========================
-          mkdir -p StockD.iconset
+          ICON_SRC="assets/images/StockD.png"
+          ICONSET="StockD.iconset"
 
-          sips -z 16 16     assets/images/StockD.png --out StockD.iconset/icon_16x16.png
-          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_16x16@2x.png
-          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_32x32.png
-          sips -z 64 64     assets/images/StockD.png --out StockD.iconset/icon_32x32@2x.png
-          sips -z 128 128   assets/images/StockD.png --out StockD.iconset/icon_128x128.png
-          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_128x128@2x.png
-          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_256x256.png
-          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_256x256@2x.png
-          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_512x512.png
-          sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
+          rm -rf "$ICONSET"
+          mkdir -p "$ICONSET"
 
-          iconutil -c icns StockD.iconset -o StockD.icns
+          magick "$ICON_SRC" -resize 1024x1024 temp_icon.png
+
+          magick temp_icon.png -resize 16x16     "$ICONSET/icon_16x16.png"
+          magick temp_icon.png -resize 32x32     "$ICONSET/icon_16x16@2x.png"
+          magick temp_icon.png -resize 32x32     "$ICONSET/icon_32x32.png"
+          magick temp_icon.png -resize 64x64     "$ICONSET/icon_32x32@2x.png"
+          magick temp_icon.png -resize 128x128   "$ICONSET/icon_128x128.png"
+          magick temp_icon.png -resize 256x256   "$ICONSET/icon_128x128@2x.png"
+          magick temp_icon.png -resize 256x256   "$ICONSET/icon_256x256.png"
+          magick temp_icon.png -resize 512x512   "$ICONSET/icon_256x256@2x.png"
+          magick temp_icon.png -resize 512x512   "$ICONSET/icon_512x512.png"
+          magick temp_icon.png -resize 1024x1024 "$ICONSET/icon_512x512@2x.png"
+
+          iconutil -c icns "$ICONSET" -o StockD.icns
+
+          rm -f temp_icon.png
 
           cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 
@@ -143,7 +151,7 @@ jobs:
       - name: Install Dependencies
         run: |
           set -e
-          brew install npm
+          brew install npm imagemagick
           npm install -g create-dmg
 
       - name: Assemble Backend & Build
@@ -182,7 +190,7 @@ jobs:
           cp -R backend_bundle/* "$BUNDLE_DIR/"
 
           # =========================
-          # SAFE echo launcher (FIXED)
+          # SAFE echo launcher
           # =========================
           echo '#!/bin/bash' > "$BUNDLE_DIR/sage_launcher.sh"
           echo 'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"' >> "$BUNDLE_DIR/sage_launcher.sh"
@@ -193,22 +201,30 @@ jobs:
           chmod +x "$BUNDLE_DIR/sage_launcher.sh"
 
           # =========================
-          # ICON FIX
+          # ICON (ImageMagick FIX)
           # =========================
-          mkdir -p StockD.iconset
+          ICON_SRC="assets/images/StockD.png"
+          ICONSET="StockD.iconset"
 
-          sips -z 16 16     assets/images/StockD.png --out StockD.iconset/icon_16x16.png
-          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_16x16@2x.png
-          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_32x32.png
-          sips -z 64 64     assets/images/StockD.png --out StockD.iconset/icon_32x32@2x.png
-          sips -z 128 128   assets/images/StockD.png --out StockD.iconset/icon_128x128.png
-          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_128x128@2x.png
-          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_256x256.png
-          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_256x256@2x.png
-          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_512x512.png
-          sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
+          rm -rf "$ICONSET"
+          mkdir -p "$ICONSET"
 
-          iconutil -c icns StockD.iconset -o StockD.icns
+          magick "$ICON_SRC" -resize 1024x1024 temp_icon.png
+
+          magick temp_icon.png -resize 16x16     "$ICONSET/icon_16x16.png"
+          magick temp_icon.png -resize 32x32     "$ICONSET/icon_16x16@2x.png"
+          magick temp_icon.png -resize 32x32     "$ICONSET/icon_32x32.png"
+          magick temp_icon.png -resize 64x64     "$ICONSET/icon_32x32@2x.png"
+          magick temp_icon.png -resize 128x128   "$ICONSET/icon_128x128.png"
+          magick temp_icon.png -resize 256x256   "$ICONSET/icon_128x128@2x.png"
+          magick temp_icon.png -resize 256x256   "$ICONSET/icon_256x256.png"
+          magick temp_icon.png -resize 512x512   "$ICONSET/icon_256x256@2x.png"
+          magick temp_icon.png -resize 512x512   "$ICONSET/icon_512x512.png"
+          magick temp_icon.png -resize 1024x1024 "$ICONSET/icon_512x512@2x.png"
+
+          iconutil -c icns "$ICONSET" -o StockD.icns
+
+          rm -f temp_icon.png
 
           cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 
