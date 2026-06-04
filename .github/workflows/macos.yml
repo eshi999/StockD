@@ -110,6 +110,10 @@ jobs:
           
           create-dmg --volname "StockD" --volicon StockD.icns --window-size 600 400 --icon-size 100 --icon "StockD.app" 150 200 --app-drop-link 450 200 "StockD-macOS-${{ matrix.arch }}.dmg" "$APP_DIR"
 
-      - name: Upload
+      - name: Release
         uses: softprops/action-gh-release@v2
-        with: { tag_name: latest, make_latest: true, files: StockD-macOS-${{ matrix.arch }}.dmg }
+        with:
+          tag_name: latest
+          make_latest: true
+          files: |
+            StockD-macOS-${{ matrix.arch }}.dmg
