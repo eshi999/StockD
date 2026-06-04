@@ -25,7 +25,8 @@ jobs:
       PYTHON_URL: "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.12.13+20260510-aarch64-apple-darwin-install_only.tar.gz"
       TARGET_NAME: "macos-arm64"
       PIP_PACKAGES: "tensorflow tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib"
-
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
+    
     steps: &build_steps
       - uses: actions/checkout@v4
 
@@ -87,8 +88,7 @@ jobs:
           flutter build macos \
             --release \
             --build-name="1.2.0" \
-            --build-number=1 \
-            --target-platform-version=12.0
+            --build-number=1 
 
           APP_DIR="build/macos/Build/Products/Release/StockD.app"
 
@@ -173,5 +173,6 @@ jobs:
       PYTHON_URL: "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.12.13+20260510-x86_64-apple-darwin-install_only.tar.gz"
       TARGET_NAME: "macos-x64"
       PIP_PACKAGES: "tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib"
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
 
     steps: *build_steps
