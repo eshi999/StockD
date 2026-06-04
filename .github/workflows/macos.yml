@@ -18,102 +18,201 @@ permissions:
 
 jobs:
   build-macos:
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-14
+
     strategy:
       matrix:
         include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x64
-    if: ${{ github.event.inputs.build_target == 'all' || contains(github.event.inputs.build_target, matrix.arch) }}
+          - arch: arm64
+            target: macos-arm64
+          - arch: x64
+            target: macos-x64
+
+    if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == matrix.target }}
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure Xcode Settings
+      # -----------------------------
+      # FORCE macOS 11 ACROSS PROJECT
+      # -----------------------------
+      - name: Enforce macOS 11 Deployment Target
         run: |
-          # Force deployment target to 11.0 and disable sandbox programmatically
-          find . -name "project.pbxproj" -exec sed -i '' 's/MACOSX_DEPLOYMENT_TARGET = .*/MACOSX_DEPLOYMENT_TARGET = 11.0;/g' {} +
-          ENTITLEMENTS=$(find . -name "*.entitlements")
-          if [ -f "$ENTITLEMENTS" ]; then /usr/libexec/PlistBuddy -c "Delete :com.apple.security.app-sandbox" "$ENTITLEMENTS" || true; fi
+          set -e
 
+          echo "Forcing macOS 11 deployment target across Flutter + Xcode + Pods"
+
+          # Xcode project enforcement
+          find . -name "project.pbxproj" -exec sed -i '' \
+            's/MACOSX_DEPLOYMENT_TARGET = .*/MACOSX_DEPLOYMENT_TARGET = 11.0;/g' {} +
+
+          # Flutter xcconfig enforcement
+          mkdir -p macos/Flutter
+
+          for f in Debug Release Profile; do
+            FILE="macos/Flutter/Flutter-${f}.xcconfig"
+            touch "$FILE"
+            grep -q "MACOSX_DEPLOYMENT_TARGET" "$FILE" && \
+              sed -i '' 's/MACOSX_DEPLOYMENT_TARGET=.*/MACOSX_DEPLOYMENT_TARGET=11.0/' "$FILE" || \
+              echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$FILE"
+          done
+
+          # CocoaPods enforcement
+          cd macos
+          sed -i '' 's/platform :osx, .*/platform :osx, "11.0"/g' Podfile || true
+          grep -q "platform :osx" Podfile || echo 'platform :osx, "11.0"' >> Podfile
+          cd ..
+
+      # -----------------------------
+      # FLUTTER SETUP
+      # -----------------------------
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
-        with: { channel: 'stable', cache: true }
+        with:
+          channel: stable
+          cache: true
 
       - name: Install Dependencies
         run: |
           brew install npm
           npm install -g create-dmg
 
-      - name: Assemble Backend & Build
+      # -----------------------------
+      # BUILD BACKEND + APP
+      # -----------------------------
+      - name: Build Backend & Flutter App
         run: |
-          mkdir -p "backend_bundle_${{ matrix.arch }}"
-          curl -L "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.12.13+20260510-${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}-apple-darwin-install_only.tar.gz" -o python.tar.gz
-          tar -xzf python.tar.gz -C "backend_bundle_${{ matrix.arch }}/" --strip-components=1
-          
-          ./"backend_bundle_${{ matrix.arch }}/bin/python3" -m pip install --upgrade pip
-          ./"backend_bundle_${{ matrix.arch }}/bin/pip" install tensorflow tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib
-          
-          mkdir -p "backend_bundle_${{ matrix.arch }}/artifacts"
-          cp ML/*.py "backend_bundle_${{ matrix.arch }}/"
-          cp ML/artifacts/*.json ML/artifacts/*.weights.h5 ML/artifacts/*.joblib "backend_bundle_${{ matrix.arch }}/artifacts/"
-          
-          # Ad-hoc sign the python binary for Monterey execution
-          codesign --force --deep --sign - "backend_bundle_${{ matrix.arch }}/bin/python3"
-          
+          set -e
+
+          ARCH="${{ matrix.arch }}"
+
+          if [ "$ARCH" = "arm64" ]; then
+            PY_ARCH="aarch64"
+          else
+            PY_ARCH="x86_64"
+          fi
+
+          echo "Building backend for $ARCH ($PY_ARCH)"
+
+          mkdir -p "backend_bundle_${ARCH}"
+
+          curl -L \
+            "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.12.13+20260510-${PY_ARCH}-apple-darwin-install_only.tar.gz" \
+            -o python.tar.gz
+
+          tar -xzf python.tar.gz -C "backend_bundle_${ARCH}/" --strip-components=1
+
+          PYTHON="./backend_bundle_${ARCH}/bin/python3"
+          PIP="./backend_bundle_${ARCH}/bin/pip"
+
+          $PYTHON -m pip install --upgrade pip
+
+          COMMON_DEPS="fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib"
+
+          if [ "$ARCH" = "arm64" ]; then
+            echo "Installing ARM64 stack (tensorflow + tensorflow-metal)"
+            $PIP install tensorflow tensorflow-metal $COMMON_DEPS
+          else
+            echo "Installing Intel stack (CPU-only TensorFlow)"
+            $PIP install tensorflow $COMMON_DEPS
+          fi
+
+          mkdir -p "backend_bundle_${ARCH}/artifacts"
+
+          cp ML/*.py "backend_bundle_${ARCH}/"
+          cp ML/artifacts/* "backend_bundle_${ARCH}/artifacts/" 2>/dev/null || true
+
+          codesign --force --deep --sign - "backend_bundle_${ARCH}/bin/python3"
+
+          # -----------------------------
+          # FLUTTER BUILD (macOS 11 SAFE)
+          # -----------------------------
           flutter config --enable-macos-desktop
+          flutter clean
+          rm -rf build/macos
+
           flutter pub get
-          flutter build macos --release --build-name="1.2.0" --build-number=1
-          
+
+          flutter build macos \
+            --release \
+            --build-name="1.2.0" \
+            --build-number=1
+
           APP_DIR="build/macos/Build/Products/Release/StockD.app"
           BUNDLE_DIR="$APP_DIR/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+
           mkdir -p "$BUNDLE_DIR"
-          cp -R "backend_bundle_${{ matrix.arch }}/"* "$BUNDLE_DIR/"
-          rm -f "$APP_DIR/Icon"$'\r'
-          
-          # Inject rigorous readiness-probe launcher
+          cp -R "backend_bundle_${ARCH}/"* "$BUNDLE_DIR/"
+
+          rm -f "$APP_DIR/Icon\r" || true
+
+          # -----------------------------
+          # BACKEND LAUNCHER
+          # -----------------------------
           cat > "$BUNDLE_DIR/sage_launcher.sh" << 'EOF'
           #!/bin/bash
           SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
           LOG_FILE="$SCRIPT_DIR/backend_init.log"
           exec > >(tee -a "$LOG_FILE") 2>&1
-          
+
           export ML_DIR="$SCRIPT_DIR"
           export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
-          
+
           if [ ! -f "$SCRIPT_DIR/artifacts/weights.h5" ]; then
               echo "FATAL: Missing weights.h5"
               exit 1
           fi
-          
+
           "$SCRIPT_DIR/bin/python3" -u "$SCRIPT_DIR/main.py" &
           BACKEND_PID=$!
-          
-          RETRIES=0
-          while [ $RETRIES -lt 15 ]; do
+
+          for i in {1..15}; do
               if curl -s http://localhost:8000/health | grep -q "ok"; then
                   echo "Backend operational."
                   break
               fi
               sleep 2
-              RETRIES=$((RETRIES+1))
           done
+
           wait $BACKEND_PID
           EOF
-          chmod +x "$BUNDLE_DIR/sage_launcher.sh"
-          
-          mkdir StockD.iconset
-          sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
-          iconutil -c icns StockD.iconset
-          cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
-          
-          create-dmg --volname "StockD" --volicon StockD.icns --window-size 600 400 --icon-size 100 --icon "StockD.app" 150 200 --app-drop-link 450 200 "StockD-macOS-${{ matrix.arch }}.dmg" "$APP_DIR"
 
+          chmod +x "$BUNDLE_DIR/sage_launcher.sh"
+
+          # -----------------------------
+          # ICON
+          # -----------------------------
+          mkdir -p StockD.iconset
+
+          sips -z 512 512 assets/images/StockD.png --out StockD.iconset/icon_512x512.png
+          sips -z 256 256 assets/images/StockD.png --out StockD.iconset/icon_256x256.png
+          sips -z 128 128 assets/images/StockD.png --out StockD.iconset/icon_128x128.png
+          sips -z 64 64 assets/images/StockD.png --out StockD.iconset/icon_64x64.png
+
+          iconutil -c icns StockD.iconset
+
+          cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
+
+          # -----------------------------
+          # DMG
+          # -----------------------------
+          create-dmg \
+            --volname "StockD" \
+            --volicon StockD.icns \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "StockD.app" 150 200 \
+            --app-drop-link 450 200 \
+            "StockD-macOS-${ARCH}.dmg" \
+            "$APP_DIR"
+
+      # -----------------------------
+      # RELEASE
+      # -----------------------------
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           make_latest: true
           files: |
-            StockD-macOS-${{ matrix.arch }}.dmg
+            StockD-macOS-*.dmg
