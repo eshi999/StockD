@@ -56,7 +56,6 @@ Everything runs directly from the application bundle.
 | macOS Intel | x64 | TensorFlow 3.x | AVX / AVX2 CPU Instructions |
 | Linux NVIDIA | x64 | TensorFlow 3.x + Bundled CUDA | Self-Contained CUDA / cuDNN Runtime |
 | Linux AMD + Intel | x64 | TensorFlow 3.x + Intel Extension | CPU Vectorization + Intel oneDNN Optimizations |
-| Linux ARM64 | ARM64 | TensorFlow 3.x | AArch64 NEON SIMD |
 
 ---
 
