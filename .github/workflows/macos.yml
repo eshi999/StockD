@@ -17,120 +17,211 @@ permissions:
   contents: write
 
 jobs:
-  # JOB 1: ARM64 (Apple Silicon)
+
+  # =========================
+  # ARM64 (Apple Silicon)
+  # =========================
   build-arm64:
     if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'macos-arm64' }}
     runs-on: macos-15
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
           cache: true
 
       - name: Install Dependencies
         run: |
+          set -e
           brew install npm
           npm install -g create-dmg
-          
+
       - name: Assemble Backend & Build
         run: |
+          set -e
+
           mkdir -p backend_bundle/artifacts
+
           curl -L "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.12.13+20260510-aarch64-apple-darwin-install_only.tar.gz" -o python_mac.tar.gz
           tar -xzf python_mac.tar.gz -C backend_bundle/ --strip-components=1
-          # Use the path from your warning to upgrade pip
+
           ./backend_bundle/bin/python3 -m pip install --upgrade pip
-          ./backend_bundle/bin/pip install tensorflow tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib
+
+          ./backend_bundle/bin/pip install \
+            tensorflow \
+            tensorflow-metal \
+            fastapi \
+            uvicorn \
+            pandas \
+            scikit-learn \
+            yfinance \
+            numpy \
+            peewee \
+            joblib
+
           cp ML/*.py backend_bundle/
           cp ML/artifacts/*.json ML/artifacts/*.weights.h5 ML/artifacts/*.joblib backend_bundle/artifacts/
-          
+
           flutter config --enable-macos-desktop
           flutter pub get
           flutter build macos --release --build-name="1.2.0" --build-number=1
-          
+
           APP_DIR="build/macos/Build/Products/Release/StockD.app"
           BUNDLE_DIR="$APP_DIR/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+
           mkdir -p "$BUNDLE_DIR"
           cp -R backend_bundle/* "$BUNDLE_DIR/"
-          
-          cat > "$BUNDLE_DIR/sage_launcher.sh" << 'EOF'
-          #!/bin/bash
-          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-          export ML_DIR="$SCRIPT_DIR"
-          export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
-          exec "$SCRIPT_DIR/bin/python3" "$SCRIPT_DIR/main.py" "$@"
-          EOF
+
+          # =========================
+          # SAFE echo launcher (FIXED)
+          # =========================
+          echo '#!/bin/bash' > "$BUNDLE_DIR/sage_launcher.sh"
+          echo 'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"' >> "$BUNDLE_DIR/sage_launcher.sh"
+          echo 'export ML_DIR="$SCRIPT_DIR"' >> "$BUNDLE_DIR/sage_launcher.sh"
+          echo 'export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"' >> "$BUNDLE_DIR/sage_launcher.sh"
+          echo 'exec "$SCRIPT_DIR/bin/python3" "$SCRIPT_DIR/main.py" "$@"' >> "$BUNDLE_DIR/sage_launcher.sh"
+
           chmod +x "$BUNDLE_DIR/sage_launcher.sh"
-          
-          mkdir StockD.iconset
+
+          # =========================
+          # ICON FIX
+          # =========================
+          mkdir -p StockD.iconset
+
+          sips -z 16 16     assets/images/StockD.png --out StockD.iconset/icon_16x16.png
+          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_16x16@2x.png
+          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_32x32.png
+          sips -z 64 64     assets/images/StockD.png --out StockD.iconset/icon_32x32@2x.png
+          sips -z 128 128   assets/images/StockD.png --out StockD.iconset/icon_128x128.png
+          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_128x128@2x.png
+          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_256x256.png
+          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_256x256@2x.png
+          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_512x512.png
           sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
-          iconutil -c icns StockD.iconset
+
+          iconutil -c icns StockD.iconset -o StockD.icns
+
           cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
-          create-dmg --volname "StockD Installer" --volicon StockD.icns --window-size 800 400 --icon "StockD.app" 200 190 --app-drop-link 600 190 "StockD-macOS-arm64.dmg" "$APP_DIR"
-      
-      - name: Upload
+
+          create-dmg \
+            --volname "StockD Installer" \
+            --volicon StockD.icns \
+            --window-size 800 400 \
+            --icon "StockD.app" 200 190 \
+            --app-drop-link 600 190 \
+            "StockD-macOS-arm64.dmg" \
+            "$APP_DIR"
+
+      - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           make_latest: true
           files: StockD-macOS-arm64.dmg
 
-  # JOB 2: X64 (Intel)
+
+  # =========================
+  # X64 (Intel)
+  # =========================
   build-x64:
     if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'macos-x64' }}
     runs-on: macos-15-intel
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
           cache: true
 
       - name: Install Dependencies
         run: |
+          set -e
           brew install npm
           npm install -g create-dmg
-          
+
       - name: Assemble Backend & Build
         run: |
+          set -e
+
           mkdir -p backend_bundle/artifacts
+
           curl -L "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.12.13+20260510-x86_64-apple-darwin-install_only.tar.gz" -o python_mac.tar.gz
           tar -xzf python_mac.tar.gz -C backend_bundle/ --strip-components=1
-          # Use the path from your warning to upgrade pip
+
           ./backend_bundle/bin/python3 -m pip install --upgrade pip
-          ./backend_bundle/bin/pip install tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib
+
+          ./backend_bundle/bin/pip install \
+            tensorflow \
+            fastapi \
+            uvicorn \
+            pandas \
+            scikit-learn \
+            yfinance \
+            numpy \
+            peewee \
+            joblib
+
           cp ML/*.py backend_bundle/
           cp ML/artifacts/*.json ML/artifacts/*.weights.h5 ML/artifacts/*.joblib backend_bundle/artifacts/
-          
+
           flutter config --enable-macos-desktop
           flutter pub get
           flutter build macos --release --build-name="1.2.0" --build-number=1
-          
+
           APP_DIR="build/macos/Build/Products/Release/StockD.app"
           BUNDLE_DIR="$APP_DIR/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+
           mkdir -p "$BUNDLE_DIR"
           cp -R backend_bundle/* "$BUNDLE_DIR/"
-          
-          cat > "$BUNDLE_DIR/sage_launcher.sh" << 'EOF'
-          #!/bin/bash
-          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-          export ML_DIR="$SCRIPT_DIR"
-          export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
-          exec "$SCRIPT_DIR/bin/python3" "$SCRIPT_DIR/main.py" "$@"
-          EOF
+
+          # =========================
+          # SAFE echo launcher (FIXED)
+          # =========================
+          echo '#!/bin/bash' > "$BUNDLE_DIR/sage_launcher.sh"
+          echo 'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"' >> "$BUNDLE_DIR/sage_launcher.sh"
+          echo 'export ML_DIR="$SCRIPT_DIR"' >> "$BUNDLE_DIR/sage_launcher.sh"
+          echo 'export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"' >> "$BUNDLE_DIR/sage_launcher.sh"
+          echo 'exec "$SCRIPT_DIR/bin/python3" "$SCRIPT_DIR/main.py" "$@"' >> "$BUNDLE_DIR/sage_launcher.sh"
+
           chmod +x "$BUNDLE_DIR/sage_launcher.sh"
-          
-          mkdir StockD.iconset
+
+          # =========================
+          # ICON FIX
+          # =========================
+          mkdir -p StockD.iconset
+
+          sips -z 16 16     assets/images/StockD.png --out StockD.iconset/icon_16x16.png
+          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_16x16@2x.png
+          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_32x32.png
+          sips -z 64 64     assets/images/StockD.png --out StockD.iconset/icon_32x32@2x.png
+          sips -z 128 128   assets/images/StockD.png --out StockD.iconset/icon_128x128.png
+          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_128x128@2x.png
+          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_256x256.png
+          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_256x256@2x.png
+          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_512x512.png
           sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
-          iconutil -c icns StockD.iconset
+
+          iconutil -c icns StockD.iconset -o StockD.icns
+
           cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
-          create-dmg --volname "StockD Installer" --volicon StockD.icns --window-size 800 400 --icon "StockD.app" 200 190 --app-drop-link 600 190 "StockD-macOS-x64.dmg" "$APP_DIR"
-      
-      - name: Upload
+
+          create-dmg \
+            --volname "StockD Installer" \
+            --volicon StockD.icns \
+            --window-size 800 400 \
+            --icon "StockD.app" 200 190 \
+            --app-drop-link 600 190 \
+            "StockD-macOS-x64.dmg" \
+            "$APP_DIR"
+
+      - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
