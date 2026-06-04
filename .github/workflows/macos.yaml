@@ -2,69 +2,110 @@ name: macOS Build
 
 on:
   workflow_dispatch:
+    inputs:
+      build_target:
+        description: 'Select target build architecture'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - macos-arm64
+          - macos-x64
 
 permissions:
   contents: write
 
-env:
-  MACOSX_DEPLOYMENT_TARGET: "11.0"
-  PYTHON_VERSION: "3.12.10"
-  PYTHON_BIN_PATH: "/Library/Frameworks/Python.framework/Versions/3.12/bin"
-
 jobs:
-  # ==========================================
-  # JOB 1: APPLE SILICON M1/M2/M3/M4 (ARM64)
-  # ==========================================
-  build-arm64:
-    name: Build Apple Silicon (ARM64)
-    runs-on: macos-15
+  build-macos:
+    name: Build macOS (${{ matrix.arch }})
+    if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == format('macos-{0}', matrix.arch) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14      # GitHub's Apple Silicon (M-Series) Runners
+            arch: arm64
+          - os: macos-13      # GitHub's Intel Runners
+            arch: x64
+            
+    runs-on: ${{ matrix.os }}
+    
     steps:
-      - uses: actions/checkout@v4
-      
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          
-      - name: Build ARM64 Core Architecture
-        run: |
-          curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
-          sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
-          export PATH="${PYTHON_BIN_PATH}:${PATH}"
-          
-          pip3 install --break-system-packages nuitka zstandard ordered-set tensorflow tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy
-          
-          cd ML
-          python3 -m nuitka main.py \
-            --standalone \
-            --assume-yes-for-downloads \
-            --output-dir=../dist_arm64 \
-            --jobs=4 \
-            --low-memory \
-            --plugin-enable=anti-bloat \
-            --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite \
-            --include-package=tensorflow
-          cd ..
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-          if [ -f "dist_arm64/main.dist/main" ]; then
-            BINARY_NAME="main"
-          elif [ -f "dist_arm64/main.dist/main.bin" ]; then
-            BINARY_NAME="main.bin"
+      - name: Install System Dependencies
+        run: |
+          brew install npm
+          npm install -g create-dmg
+
+      - name: Assemble Flat Backend Bundle
+        run: |
+          echo "==================================================="
+          echo "BUILDING TARGET: macOS ${{ matrix.arch }}"
+          echo "==================================================="
+          
+          # 1. Download Correct Standalone Python for Architecture
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+              PYTHON_URL="https://github.com/astral-sh/python-build-standalone/releases/download/20240107/cpython-3.12.1+20240107-aarch64-apple-darwin-install_only.tar.gz"
           else
-            echo "Error: Nuitka binary translation component not found!"
-            exit 1
+              PYTHON_URL="https://github.com/astral-sh/python-build-standalone/releases/download/20240107/cpython-3.12.1+20240107-x86_64-apple-darwin-install_only.tar.gz"
           fi
           
-          flutter build macos --release
-          find build/macos/Build/Products/Release/StockD.app -name "*.dSYM" -exec rm -rf {} +
+          curl -L "$PYTHON_URL" -o "python_mac.tar.gz"
           
-          DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
-          mkdir -p "$DEST"
-          cp -r dist_arm64/main.dist "$DEST/"
-          mv "$DEST/main.dist/$BINARY_NAME" "$DEST/main.dist/sage_backend"
-          chmod 755 "$DEST/main.dist/sage_backend"
+          # 2. Extract and Install Dependencies
+          mkdir -p backend_bundle/artifacts
+          tar -xzf python_mac.tar.gz -C backend_bundle/ --strip-components=1
           
-          # GENERATE THE .ICNS FILE NATIVELY
+          ./backend_bundle/bin/python3 -m ensurepip
+          ./backend_bundle/bin/pip install --upgrade pip
+          ./backend_bundle/bin/pip install tensorflow tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib
+          
+          # 3. Sync ML Code and Platform-Agnostic Artifacts
+          cp ML/*.py backend_bundle/ 2>/dev/null || true
+          rm -f ML/artifacts/*.pkl ML/artifacts/*.keras
+          
+          cp ML/artifacts/*.json backend_bundle/artifacts/ 2>/dev/null || true
+          cp ML/artifacts/*.weights.h5 backend_bundle/artifacts/ 2>/dev/null || true
+          cp ML/artifacts/*.joblib backend_bundle/artifacts/ 2>/dev/null || true
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Build Flutter macOS App
+        run: |
+          flutter config --enable-macos-desktop
+          flutter pub get
+          flutter build macos --release --build-name="1.2.0" --build-number=1
+
+      - name: Inject Backend into macOS App Bundle
+        run: |
+          APP_DIR="build/macos/Build/Products/Release/StockD.app"
+          BUNDLE_DIR="$APP_DIR/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+          
+          mkdir -p "$BUNDLE_DIR"
+          cp -R backend_bundle/* "$BUNDLE_DIR/"
+          
+          cat > "$BUNDLE_DIR/sage_launcher.sh" << 'EOF'
+          #!/bin/bash
+          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+          export ML_DIR="$SCRIPT_DIR"
+          export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+          exec "$SCRIPT_DIR/bin/python3" "$SCRIPT_DIR/main.py" "$@"
+          EOF
+          
+          chmod +x "$BUNDLE_DIR/sage_launcher.sh"
+
+      - name: Generate and Inject Native macOS Icons
+        run: |
+          APP_DIR="build/macos/Build/Products/Release/StockD.app"
           mkdir StockD.iconset
+          
           sips -z 16 16     assets/images/StockD.png --out StockD.iconset/icon_16x16.png
           sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_16x16@2x.png
           sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_32x32.png
@@ -75,151 +116,31 @@ jobs:
           sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_256x256@2x.png
           sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_512x512.png
           sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
+          
           iconutil -c icns StockD.iconset
-          rm -R StockD.iconset
-          
-          # FIX: Overwrite macOSAppIcon.icns to completely wipe out the embedded Flutter fallback logo
-          APP_RESOURCES="build/macos/Build/Products/Release/StockD.app/Contents/Resources"
-          cp StockD.icns "$APP_RESOURCES/macOSAppIcon.icns"
-          
-          # FORCE FINER REFRESH: Touch the target structure to force a cache eviction loop in Finder
-          touch "build/macos/Build/Products/Release/StockD.app"
-          
-          echo "Packaging application into DMG..."
-          brew install create-dmg
-          rm -f StockD-mac-arm.dmg
-          create-dmg \
-            --volname "StockD-mac-arm" \
-            --volicon "StockD.icns" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --icon "StockD.app" 175 120 \
-            --hide-extension "StockD.app" \
-            --app-drop-link 425 120 \
-            "StockD-mac-arm.dmg" \
-            "build/macos/Build/Products/Release/StockD.app" || true
+          cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 
-          find . -maxdepth 1 -type f -name "StockD-mac-arm.dmg" -size +1900M -exec split -b 1900m {} {}.part_ \;
-
-      - name: Deploy ARM64 to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: "StockD-1.2.0"
-          make_latest: true
-          overwrite_files: false
-          fail_on_unmatched_files: false
-          files: |
-            StockD-mac-arm.dmg
-            StockD-mac-arm.dmg.part_*
-
-      - name: Decontaminate Workspace Space
-        if: always()
-        run: rm -rf dist_arm64 build/ StockD.icns
-
-  # ==========================================
-  # JOB 2: OLD INTEL MAC ARCHITECTURES (X64)
-  # ==========================================
-  build-intel:
-    name: Build Legacy Mac (Intel x64)
-    runs-on: macos-15-intel
-    steps:
-      - uses: actions/checkout@v4
-      
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          
-      - name: Build Intel Core Architecture
+      - name: Create DMG Installer
         run: |
-          curl -O "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
-          sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
-          export PATH="${PYTHON_BIN_PATH}:${PATH}"
+          APP_DIR="build/macos/Build/Products/Release/StockD.app"
+          DMG_NAME="StockD-macOS-${{ matrix.arch }}.dmg"
           
-          pip3 install --break-system-packages nuitka zstandard ordered-set tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy
-          
-          cd ML
-          python3 -m nuitka main.py \
-            --standalone \
-            --assume-yes-for-downloads \
-            --output-dir=../dist_intel \
-            --jobs=4 \
-            --low-memory \
-            --plugin-enable=anti-bloat \
-            --nofollow-import-to=tensorboard,tensorflow_estimator,tensorflow.compiler,tensorflow.lite \
-            --include-package=tensorflow
-          cd ..
-
-          if [ -f "dist_intel/main.dist/main" ]; then
-            BINARY_NAME="main"
-          elif [ -f "dist_intel/main.dist/main.bin" ]; then
-            BINARY_NAME="main.bin"
-          else
-            echo "Error: Nuitka binary translation component not found!"
-            exit 1
-          fi
-          
-          flutter build macos --release
-          find build/macos/Build/Products/Release/StockD.app -name "*.dSYM" -exec rm -rf {} +
-          
-          DEST="build/macos/Build/Products/Release/StockD.app/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
-          mkdir -p "$DEST"
-          cp -r dist_intel/main.dist "$DEST/"
-          mv "$DEST/main.dist/$BINARY_NAME" "$DEST/main.dist/sage_backend"
-          chmod 755 "$DEST/main.dist/sage_backend"
-          
-          # GENERATE THE .ICNS FILE NATIVELY
-          mkdir StockD.iconset
-          sips -z 16 16     assets/images/StockD.png --out StockD.iconset/icon_16x16.png
-          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_16x16@2x.png
-          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_32x32.png
-          sips -z 64 64     assets/images/StockD.png --out StockD.iconset/icon_32x32@2x.png
-          sips -z 128 128   assets/images/StockD.png --out StockD.iconset/icon_128x128.png
-          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_128x128@2x.png
-          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_256x256.png
-          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_256x256@2x.png
-          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_512x512.png
-          sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
-          iconutil -c icns StockD.iconset
-          rm -R StockD.iconset
-          
-          # FIX: Overwrite macOSAppIcon.icns to completely wipe out the embedded Flutter fallback logo
-          APP_RESOURCES="build/macos/Build/Products/Release/StockD.app/Contents/Resources"
-          cp StockD.icns "$APP_RESOURCES/macOSAppIcon.icns"
-          
-          # FORCE FINER REFRESH: Touch the target structure to force a cache eviction loop in Finder
-          touch "build/macos/Build/Products/Release/StockD.app"
-          
-          echo "Packaging application into DMG..."
-          brew install create-dmg
-          rm -f StockD-mac-intel.dmg
           create-dmg \
-            --volname "StockD-mac-intel" \
+            --volname "StockD Installer" \
             --volicon "StockD.icns" \
             --window-pos 200 120 \
-            --window-size 600 400 \
+            --window-size 800 400 \
             --icon-size 100 \
-            --icon "StockD.app" 175 120 \
+            --icon "StockD.app" 200 190 \
             --hide-extension "StockD.app" \
-            --app-drop-link 425 120 \
-            "StockD-mac-intel.dmg" \
-            "build/macos/Build/Products/Release/StockD.app" || true
+            --app-drop-link 600 190 \
+            "$DMG_NAME" \
+            "$APP_DIR"
 
-          find . -maxdepth 1 -type f -name "StockD-mac-intel.dmg" -size +1900M -exec split -b 1900m {} {}.part_ \;
-
-      - name: Deploy Intel to GitHub Release
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: "StockD-1.2.0"
-          make_latest: true
-          overwrite_files: false
-          fail_on_unmatched_files: false
-          files: |
-            StockD-mac-intel.dmg
-            StockD-mac-intel.dmg.part_*
-
-      - name: Decontaminate Workspace Space
-        if: always()
-        run: rm -rf dist_intel build/ StockD.icns
+          make_latest: ${{ matrix.arch == 'arm64' }}
+          overwrite_files: true
+          files: "*.dmg"
