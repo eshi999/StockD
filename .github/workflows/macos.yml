@@ -17,85 +17,31 @@ permissions:
   contents: write
 
 jobs:
-  # This job dynamically builds the matrix to avoid 'Unrecognized named-value' errors
-  matrix_prep:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+  # JOB 1: ARM64 (Apple Silicon)
+  build-arm64:
+    if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'macos-arm64' }}
+    runs-on: macos-15
     steps:
-      - id: set-matrix
-        run: |
-          if [ "${{ github.event.inputs.build_target }}" == "all" ]; then
-            echo 'matrix={"include":[{"os":"macos-15","arch":"arm64"},{"os":"macos-15-intel","arch":"x64"}]}' >> $GITHUB_OUTPUT
-          elif [ "${{ github.event.inputs.build_target }}" == "macos-arm64" ]; then
-            echo 'matrix={"include":[{"os":"macos-15","arch":"arm64"}]}' >> $GITHUB_OUTPUT
-          else
-            echo 'matrix={"include":[{"os":"macos-15-intel","arch":"x64"}]}' >> $GITHUB_OUTPUT
-          fi
-
-  build-macos:
-    needs: matrix_prep
-    name: Build macOS (${{ matrix.arch }})
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.matrix_prep.outputs.matrix) }}
-    runs-on: ${{ matrix.os }}
-    
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Install System Dependencies
+      - uses: actions/checkout@v4
+      - name: Install Dependencies
         run: |
           brew install npm
           npm install -g create-dmg
-
-      - name: Assemble Flat Backend Bundle
+      - name: Assemble Backend & Build
         run: |
-          echo "==================================================="
-          echo "BUILDING TARGET: macOS ${{ matrix.arch }}"
-          echo "==================================================="
-          
-          if [ "${{ matrix.arch }}" == "arm64" ]; then
-              PYTHON_URL="https://github.com/astral-sh/python-build-standalone/releases/download/20240107/cpython-3.12.1+20240107-aarch64-apple-darwin-install_only.tar.gz"
-          else
-              PYTHON_URL="https://github.com/astral-sh/python-build-standalone/releases/download/20240107/cpython-3.12.1+20240107-x86_64-apple-darwin-install_only.tar.gz"
-          fi
-          
-          curl -L "$PYTHON_URL" -o "python_mac.tar.gz"
-          
           mkdir -p backend_bundle/artifacts
+          curl -L "https://github.com/astral-sh/python-build-standalone/releases/download/20240107/cpython-3.12.1+20260510-aarch64-apple-darwin-install_only.tar.gz" -o python_mac.tar.gz
           tar -xzf python_mac.tar.gz -C backend_bundle/ --strip-components=1
-          
-          ./backend_bundle/bin/python3 -m ensurepip
-          ./backend_bundle/bin/pip install --upgrade pip
           ./backend_bundle/bin/pip install tensorflow tensorflow-metal fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib
+          cp ML/*.py backend_bundle/
+          cp ML/artifacts/*.json ML/artifacts/*.weights.h5 ML/artifacts/*.joblib backend_bundle/artifacts/
           
-          # Flattening the directory tree: Copying contents directly to bundle root
-          cp ML/*.py backend_bundle/ 2>/dev/null || true
-          rm -f ML/artifacts/*.pkl ML/artifacts/*.keras
-          
-          cp ML/artifacts/*.json backend_bundle/artifacts/ 2>/dev/null || true
-          cp ML/artifacts/*.weights.h5 backend_bundle/artifacts/ 2>/dev/null || true
-          cp ML/artifacts/*.joblib backend_bundle/artifacts/ 2>/dev/null || true
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
-      - name: Build Flutter macOS App
-        run: |
           flutter config --enable-macos-desktop
           flutter pub get
           flutter build macos --release --build-name="1.2.0" --build-number=1
-
-      - name: Inject Backend into macOS App Bundle
-        run: |
+          
           APP_DIR="build/macos/Build/Products/Release/StockD.app"
           BUNDLE_DIR="$APP_DIR/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
-          
           mkdir -p "$BUNDLE_DIR"
           cp -R backend_bundle/* "$BUNDLE_DIR/"
           
@@ -106,49 +52,68 @@ jobs:
           export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
           exec "$SCRIPT_DIR/bin/python3" "$SCRIPT_DIR/main.py" "$@"
           EOF
-          
           chmod +x "$BUNDLE_DIR/sage_launcher.sh"
-
-      - name: Generate and Inject Native macOS Icons
-        run: |
-          APP_DIR="build/macos/Build/Products/Release/StockD.app"
+          
+          # Icon + DMG
           mkdir StockD.iconset
-          
-          # Slice png into Apple's required icons
-          sips -z 16 16     assets/images/StockD.png --out StockD.iconset/icon_16x16.png
-          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_16x16@2x.png
-          sips -z 32 32     assets/images/StockD.png --out StockD.iconset/icon_32x32.png
-          sips -z 64 64     assets/images/StockD.png --out StockD.iconset/icon_32x32@2x.png
-          sips -z 128 128   assets/images/StockD.png --out StockD.iconset/icon_128x128.png
-          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_128x128@2x.png
-          sips -z 256 256   assets/images/StockD.png --out StockD.iconset/icon_256x256.png
-          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_256x256@2x.png
-          sips -z 512 512   assets/images/StockD.png --out StockD.iconset/icon_512x512.png
           sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
-          
           iconutil -c icns StockD.iconset
           cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
-
-      - name: Create DMG Installer
-        run: |
-          APP_DIR="build/macos/Build/Products/Release/StockD.app"
-          DMG_NAME="StockD-macOS-${{ matrix.arch }}.dmg"
-          
-          create-dmg \
-            --volname "StockD Installer" \
-            --volicon "StockD.icns" \
-            --window-pos 200 120 \
-            --window-size 800 400 \
-            --icon-size 100 \
-            --icon "StockD.app" 200 190 \
-            --hide-extension "StockD.app" \
-            --app-drop-link 600 190 \
-            "$DMG_NAME" \
-            "$APP_DIR"
-
-      - name: Upload to GitHub Release
+          create-dmg --volname "StockD Installer" --volicon StockD.icns --window-size 800 400 --icon "StockD.app" 200 190 --app-drop-link 600 190 "StockD-macOS-arm64.dmg" "$APP_DIR"
+      
+      - name: Upload
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          make_latest: ${{ matrix.arch == 'arm64' }}
-          files: StockD-macOS-${{ matrix.arch }}.dmg
+          make_latest: true
+          files: StockD-macOS-arm64.dmg
+
+  # JOB 2: X64 (Intel)
+  build-x64:
+    if: ${{ github.event.inputs.build_target == 'all' || github.event.inputs.build_target == 'macos-x64' }}
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: |
+          brew install npm
+          npm install -g create-dmg
+      - name: Assemble Backend & Build
+        run: |
+          mkdir -p backend_bundle/artifacts
+          curl -L "https://github.com/astral-sh/python-build-standalone/releases/download/20240107/cpython-3.12.1+20260510-x86_64-apple-darwin-install_only.tar.gz" -o python_mac.tar.gz
+          tar -xzf python_mac.tar.gz -C backend_bundle/ --strip-components=1
+          ./backend_bundle/bin/pip install tensorflow fastapi uvicorn pandas scikit-learn yfinance numpy peewee joblib
+          cp ML/*.py backend_bundle/
+          cp ML/artifacts/*.json ML/artifacts/*.weights.h5 ML/artifacts/*.joblib backend_bundle/artifacts/
+          
+          flutter config --enable-macos-desktop
+          flutter pub get
+          flutter build macos --release --build-name="1.2.0" --build-number=1
+          
+          APP_DIR="build/macos/Build/Products/Release/StockD.app"
+          BUNDLE_DIR="$APP_DIR/Contents/Frameworks/App.framework/Resources/flutter_assets/backend_bundle"
+          mkdir -p "$BUNDLE_DIR"
+          cp -R backend_bundle/* "$BUNDLE_DIR/"
+          
+          cat > "$BUNDLE_DIR/sage_launcher.sh" << 'EOF'
+          #!/bin/bash
+          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+          export ML_DIR="$SCRIPT_DIR"
+          export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+          exec "$SCRIPT_DIR/bin/python3" "$SCRIPT_DIR/main.py" "$@"
+          EOF
+          chmod +x "$BUNDLE_DIR/sage_launcher.sh"
+          
+          # Icon + DMG
+          mkdir StockD.iconset
+          sips -z 1024 1024 assets/images/StockD.png --out StockD.iconset/icon_512x512@2x.png
+          iconutil -c icns StockD.iconset
+          cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
+          create-dmg --volname "StockD Installer" --volicon StockD.icns --window-size 800 400 --icon "StockD.app" 200 190 --app-drop-link 600 190 "StockD-macOS-x64.dmg" "$APP_DIR"
+      
+      - name: Upload
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          files: StockD-macOS-x64.dmg
