@@ -36,13 +36,12 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          set -e
+          set -euo pipefail
           brew install npm imagemagick
-          npm install -g create-dmg
 
-      - name: Assemble Backend & Build
+      - name: Build macOS App
         run: |
-          set -e
+          set -euo pipefail
 
           mkdir -p backend_bundle/artifacts
 
@@ -77,7 +76,7 @@ jobs:
           cp -R backend_bundle/* "$BUNDLE_DIR/"
 
           # =========================
-          # SAFE echo launcher
+          # Launcher (safe echo version)
           # =========================
           echo '#!/bin/bash' > "$BUNDLE_DIR/sage_launcher.sh"
           echo 'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"' >> "$BUNDLE_DIR/sage_launcher.sh"
@@ -88,7 +87,7 @@ jobs:
           chmod +x "$BUNDLE_DIR/sage_launcher.sh"
 
           # =========================
-          # ICON (ImageMagick FIX)
+          # ICON (ImageMagick ONLY, no temp file)
           # =========================
           ICON_SRC="assets/images/StockD.png"
           ICONSET="StockD.iconset"
@@ -96,33 +95,42 @@ jobs:
           rm -rf "$ICONSET"
           mkdir -p "$ICONSET"
 
-          magick "$ICON_SRC" -resize 1024x1024 temp_icon.png
+          magick "$ICON_SRC" -resize 16x16     "$ICONSET/icon_16x16.png"
+          magick "$ICON_SRC" -resize 32x32     "$ICONSET/icon_16x16@2x.png"
+          magick "$ICON_SRC" -resize 32x32     "$ICONSET/icon_32x32.png"
+          magick "$ICON_SRC" -resize 64x64     "$ICONSET/icon_32x32@2x.png"
+          magick "$ICON_SRC" -resize 128x128   "$ICONSET/icon_128x128.png"
+          magick "$ICON_SRC" -resize 256x256   "$ICONSET/icon_128x128@2x.png"
+          magick "$ICON_SRC" -resize 256x256   "$ICONSET/icon_256x256.png"
+          magick "$ICON_SRC" -resize 512x512   "$ICONSET/icon_256x256@2x.png"
+          magick "$ICON_SRC" -resize 512x512   "$ICONSET/icon_512x512.png"
+          magick "$ICON_SRC" -resize 1024x1024 "$ICONSET/icon_512x512@2x.png"
 
-          magick temp_icon.png -resize 16x16     "$ICONSET/icon_16x16.png"
-          magick temp_icon.png -resize 32x32     "$ICONSET/icon_16x16@2x.png"
-          magick temp_icon.png -resize 32x32     "$ICONSET/icon_32x32.png"
-          magick temp_icon.png -resize 64x64     "$ICONSET/icon_32x32@2x.png"
-          magick temp_icon.png -resize 128x128   "$ICONSET/icon_128x128.png"
-          magick temp_icon.png -resize 256x256   "$ICONSET/icon_128x128@2x.png"
-          magick temp_icon.png -resize 256x256   "$ICONSET/icon_256x256.png"
-          magick temp_icon.png -resize 512x512   "$ICONSET/icon_256x256@2x.png"
-          magick temp_icon.png -resize 512x512   "$ICONSET/icon_512x512.png"
-          magick temp_icon.png -resize 1024x1024 "$ICONSET/icon_512x512@2x.png"
+          find "$ICONSET" -type f -name "*.png" -exec magick {} -strip {} \;
 
           iconutil -c icns "$ICONSET" -o StockD.icns
 
-          rm -f temp_icon.png
-
           cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 
-          create-dmg \
-            --volname "StockD Installer" \
-            --volicon StockD.icns \
-            --window-size 800 400 \
-            --icon "StockD.app" 200 190 \
-            --app-drop-link 600 190 \
-            "StockD-macOS-arm64.dmg" \
-            "$APP_DIR"
+          # =========================
+          # DMG (hdiutil - stable)
+          # =========================
+          STAGING="dmg_staging"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+
+          cp -R "$APP_DIR" "$STAGING/StockD.app"
+          ln -s /Applications "$STAGING/Applications"
+
+          DMG_NAME="StockD-macOS-arm64.dmg"
+
+          hdiutil create "$DMG_NAME" \
+            -volname "StockD Installer" \
+            -srcfolder "$STAGING" \
+            -ov \
+            -format UDZO
+
+          rm -rf "$STAGING"
 
       - name: Upload Release
         uses: softprops/action-gh-release@v2
@@ -150,13 +158,12 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          set -e
+          set -euo pipefail
           brew install npm imagemagick
-          npm install -g create-dmg
 
-      - name: Assemble Backend & Build
+      - name: Build macOS App
         run: |
-          set -e
+          set -euo pipefail
 
           mkdir -p backend_bundle/artifacts
 
@@ -190,7 +197,7 @@ jobs:
           cp -R backend_bundle/* "$BUNDLE_DIR/"
 
           # =========================
-          # SAFE echo launcher
+          # Launcher
           # =========================
           echo '#!/bin/bash' > "$BUNDLE_DIR/sage_launcher.sh"
           echo 'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"' >> "$BUNDLE_DIR/sage_launcher.sh"
@@ -201,7 +208,7 @@ jobs:
           chmod +x "$BUNDLE_DIR/sage_launcher.sh"
 
           # =========================
-          # ICON (ImageMagick FIX)
+          # ICON (ImageMagick ONLY)
           # =========================
           ICON_SRC="assets/images/StockD.png"
           ICONSET="StockD.iconset"
@@ -209,33 +216,42 @@ jobs:
           rm -rf "$ICONSET"
           mkdir -p "$ICONSET"
 
-          magick "$ICON_SRC" -resize 1024x1024 temp_icon.png
+          magick "$ICON_SRC" -resize 16x16     "$ICONSET/icon_16x16.png"
+          magick "$ICON_SRC" -resize 32x32     "$ICONSET/icon_16x16@2x.png"
+          magick "$ICON_SRC" -resize 32x32     "$ICONSET/icon_32x32.png"
+          magick "$ICON_SRC" -resize 64x64     "$ICONSET/icon_32x32@2x.png"
+          magick "$ICON_SRC" -resize 128x128   "$ICONSET/icon_128x128.png"
+          magick "$ICON_SRC" -resize 256x256   "$ICONSET/icon_128x128@2x.png"
+          magick "$ICON_SRC" -resize 256x256   "$ICONSET/icon_256x256.png"
+          magick "$ICON_SRC" -resize 512x512   "$ICONSET/icon_256x256@2x.png"
+          magick "$ICON_SRC" -resize 512x512   "$ICONSET/icon_512x512.png"
+          magick "$ICON_SRC" -resize 1024x1024 "$ICONSET/icon_512x512@2x.png"
 
-          magick temp_icon.png -resize 16x16     "$ICONSET/icon_16x16.png"
-          magick temp_icon.png -resize 32x32     "$ICONSET/icon_16x16@2x.png"
-          magick temp_icon.png -resize 32x32     "$ICONSET/icon_32x32.png"
-          magick temp_icon.png -resize 64x64     "$ICONSET/icon_32x32@2x.png"
-          magick temp_icon.png -resize 128x128   "$ICONSET/icon_128x128.png"
-          magick temp_icon.png -resize 256x256   "$ICONSET/icon_128x128@2x.png"
-          magick temp_icon.png -resize 256x256   "$ICONSET/icon_256x256.png"
-          magick temp_icon.png -resize 512x512   "$ICONSET/icon_256x256@2x.png"
-          magick temp_icon.png -resize 512x512   "$ICONSET/icon_512x512.png"
-          magick temp_icon.png -resize 1024x1024 "$ICONSET/icon_512x512@2x.png"
+          find "$ICONSET" -type f -name "*.png" -exec magick {} -strip {} \;
 
           iconutil -c icns "$ICONSET" -o StockD.icns
 
-          rm -f temp_icon.png
-
           cp StockD.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 
-          create-dmg \
-            --volname "StockD Installer" \
-            --volicon StockD.icns \
-            --window-size 800 400 \
-            --icon "StockD.app" 200 190 \
-            --app-drop-link 600 190 \
-            "StockD-macOS-x64.dmg" \
-            "$APP_DIR"
+          # =========================
+          # DMG (hdiutil)
+          # =========================
+          STAGING="dmg_staging"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+
+          cp -R "$APP_DIR" "$STAGING/StockD.app"
+          ln -s /Applications "$STAGING/Applications"
+
+          DMG_NAME="StockD-macOS-x64.dmg"
+
+          hdiutil create "$DMG_NAME" \
+            -volname "StockD Installer" \
+            -srcfolder "$STAGING" \
+            -ov \
+            -format UDZO
+
+          rm -rf "$STAGING"
 
       - name: Upload Release
         uses: softprops/action-gh-release@v2
