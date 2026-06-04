@@ -52,8 +52,8 @@ Everything runs directly from the application bundle.
 | Platform | Architecture | Runtime | Acceleration |
 | --- | --- | --- | --- |
 | Windows x64 | x64 | TensorFlow 3.x | AVX / AVX2 CPU Vectorization |
-| macOS Apple Silicon | ARM64 | TensorFlow 3.x + tensorflow-metal | Apple Metal Performance Shaders (MPS) | (Planned Support, currently unavailable)
-| macOS Intel | x64 | TensorFlow 3.x | AVX / AVX2 CPU Instructions | (Planned Support, currently unavailable)
+| macOS Apple Silicon (Planned Support, currently unavailable) | ARM64 | TensorFlow 3.x + tensorflow-metal | Apple Metal Performance Shaders (MPS) |
+| macOS Intel (Planned Support, currently unavailable) | x64 | TensorFlow 3.x | AVX / AVX2 CPU Instructions | (Planned Support, currently unavailable)
 | Linux NVIDIA | x64 | TensorFlow 3.x + Bundled CUDA | Self-Contained CUDA / cuDNN Runtime |
 | Linux AMD + Intel | x64 | TensorFlow 3.x + Intel Extension | CPU Vectorization + Intel oneDNN Optimizations |
 
