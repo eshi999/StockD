@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,30 +11,44 @@ enum BackendStatus { starting, online, offline }
 
 class BackendNotifier extends Notifier<BackendStatus> {
   Process? _process;
+  Timer? _healthTimer;
 
   @override
   BackendStatus build() {
     _startBackend();
-    ref.onDispose(() => stopBackend());
+    _startHealthCheck();
+
+    ref.onDispose(() {
+      _healthTimer?.cancel();
+      stopBackend();
+    });
+
     return BackendStatus.starting;
   }
 
-  void stopBackend() {
-    _process?.kill();
-    _process = null;
+  void _startHealthCheck() {
+    // Poll the health endpoint every 3s to keep UI in sync with actual server state
+    _healthTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      final isAlive = await ref.read(sageServiceProvider).isBackendAlive();
+      if (isAlive && state != BackendStatus.online) {
+        state = BackendStatus.online;
+      } else if (!isAlive && state == BackendStatus.online) {
+        state = BackendStatus.offline;
+      }
+    });
   }
 
   Future<void> _startBackend() async {
-    // Always kill any zombie process holding port 8000 before launching fresh
-    if (await ref.read(sageServiceProvider).isBackendAlive()) {
-      debugPrint('SAGE: port 8000 already active, killing before relaunch');
-      stopBackend();
-      await Future.delayed(const Duration(seconds: 2));
+    // 1. Clear Port 8000 to prevent Error 10048 (Address already in use)
+    if (Platform.isWindows) {
+      await Process.run('taskkill', ['/F', '/IM', 'python.exe', '/T']);
+    } else {
+      // Assuming fuser is available on Linux/macOS to free the port
+      await Process.run('fuser', ['-k', '8000/tcp']);
     }
 
     try {
-      final Map<String, String> secureEnv =
-          Map<String, String>.from(Platform.environment);
+      final Map<String, String> secureEnv = Map<String, String>.from(Platform.environment);
       secureEnv["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python";
 
       if (kReleaseMode) {
@@ -41,7 +56,7 @@ class BackendNotifier extends Notifier<BackendStatus> {
         debugPrint('SAGE: launching backend at $backendPath');
 
         if (!File(backendPath).existsSync()) {
-          debugPrint('SAGE: launcher script not found at $backendPath');
+          debugPrint('SAGE: launcher not found at $backendPath');
           state = BackendStatus.offline;
           return;
         }
@@ -50,59 +65,22 @@ class BackendNotifier extends Notifier<BackendStatus> {
           backendPath,
           [],
           workingDirectory: p.dirname(backendPath),
-          mode: ProcessStartMode.normal,
+          runInShell: true, // Crucial for executing .bat/.sh via shell
           environment: secureEnv,
-          // Windows requires runInShell: true to execute .bat files properly
-          runInShell: Platform.isWindows, 
         );
       } else {
-        // Development: run via local Python
+        // Development: run via local Python environment
         _process = await Process.start(
           Platform.isWindows ? 'python' : 'python3',
           ['-m', 'uvicorn', 'main:app', '--port', '8000'],
           workingDirectory: _mlDir(),
-          mode: ProcessStartMode.normal,
           environment: secureEnv,
         );
       }
 
-      // Pipe stdout and stderr so all Python output surfaces in Flutter console
-      _process!.stdout
-          .transform(const SystemEncoding().decoder)
-          .listen((line) => debugPrint('SAGE stdout: $line'));
-      _process!.stderr
-          .transform(const SystemEncoding().decoder)
-          .listen((line) => debugPrint('SAGE stderr: $line'));
-
-      // Monitor for unexpected crashes after startup
-      _process!.exitCode.then((code) {
-        debugPrint('SAGE: process exited with code $code');
-        if (state == BackendStatus.online) {
-          state = BackendStatus.offline;
-        }
-        _process = null;
-      });
-
-      // Poll until backend responds — TF can take 90-120s on cold start
-      for (int i = 0; i < 120; i++) {
-        await Future.delayed(const Duration(seconds: 1));
-
-        // Stop polling immediately if process already died
-        if (_process == null) {
-          debugPrint('SAGE: process died during startup');
-          state = BackendStatus.offline;
-          return;
-        }
-
-        if (await ref.read(sageServiceProvider).isBackendAlive()) {
-          debugPrint('SAGE: online after ${i + 1}s');
-          state = BackendStatus.online;
-          return;
-        }
-      }
-
-      debugPrint('SAGE: timed out after 120s');
-      state = BackendStatus.offline;
+      // Log process output for debugging
+      _process!.stdout.transform(const SystemEncoding().decoder).listen((line) => debugPrint('SAGE stdout: $line'));
+      _process!.stderr.transform(const SystemEncoding().decoder).listen((line) => debugPrint('SAGE stderr: $line'));
 
     } catch (e) {
       debugPrint('SAGE: start failed: $e');
@@ -110,60 +88,15 @@ class BackendNotifier extends Notifier<BackendStatus> {
     }
   }
 
-  String _resolveBackendPath() {
-    // Match the exact output names from our CI/CD pipelines
-    final String binaryName =
-        Platform.isWindows ? 'sage_launcher.bat' : 'sage_launcher.sh';
-
-    if (Platform.isLinux) {
-      final String realExe =
-          File(Platform.resolvedExecutable).resolveSymbolicLinksSync();
-      final String bundleDir = p.join(
-          p.dirname(realExe), 'data', 'flutter_assets', 'backend_bundle');
-      return _pickPath(bundleDir, binaryName);
-
-    } else if (Platform.isMacOS) {
-      final String contentsDir =
-          p.dirname(p.dirname(Platform.resolvedExecutable));
-      final String bundleDir = p.join(
-          contentsDir,
-          'Frameworks',
-          'App.framework',
-          'Resources',
-          'flutter_assets',
-          'backend_bundle');
-      return _pickPath(bundleDir, binaryName);
-
-    } else if (Platform.isWindows) {
-      final String bundleDir = p.join(
-          p.dirname(Platform.resolvedExecutable),
-          'data',
-          'flutter_assets',
-          'backend_bundle');
-      return _pickPath(bundleDir, binaryName);
-
-    } else {
-      throw UnsupportedError(
-          'SAGE backend not supported on ${Platform.operatingSystem}');
-    }
+  void stopBackend() {
+    _process?.kill();
+    _process = null;
   }
 
-  String _pickPath(String bundleDir, String binaryName) {
-    // The new CI/CD pipeline places the launcher directly in the bundleDir (flat layout)
-    final String flat = p.join(bundleDir, binaryName);
-    final String nested = p.join(bundleDir, 'sage_backend', binaryName);
-
-    if (File(flat).existsSync()) {
-      debugPrint('SAGE: using flat layout: $flat');
-      return flat;
-    }
-    if (File(nested).existsSync()) {
-      debugPrint('SAGE: using nested layout: $nested');
-      return nested;
-    }
-    
-    // Return flat as default so Process.start throws a clear "file not found" path error
-    return flat;
+  String _resolveBackendPath() {
+    final String name = Platform.isWindows ? 'sage_launcher.bat' : 'sage_launcher.sh';
+    // Matches the path in your build script: data/flutter_assets/backend_bundle
+    return p.join(p.dirname(Platform.resolvedExecutable), 'data', 'flutter_assets', 'backend_bundle', name);
   }
 
   Future<void> retry() async {
@@ -184,9 +117,7 @@ class BackendNotifier extends Notifier<BackendStatus> {
     for (int i = 0; i < 8; i++) {
       final ml = Directory(p.join(dir.path, 'ML'));
       if (ml.existsSync()) return ml.path;
-      final parent = dir.parent;
-      if (parent.path == dir.path) break;
-      dir = parent;
+      dir = dir.parent;
     }
     return '../ML';
   }
@@ -196,15 +127,12 @@ final backendProvider = NotifierProvider<BackendNotifier, BackendStatus>(
   BackendNotifier.new,
 );
 
-// ── SAGE Explanation ──────────────────────────────────────────────────────────
+// ── SAGE Explanation Logic ──────────────────────────────────────────────────
 class SageNotifier extends Notifier<SageExplanation?> {
   @override
   SageExplanation? build() => null;
 
-  Future<void> explain({
-    required StockQuestion question,
-    required int userAnswerIndex,
-  }) async {
+  Future<void> explain({required StockQuestion question, required int userAnswerIndex}) async {
     state = SageExplanation.loading(question.id);
     final result = await ref.read(sageServiceProvider).explainQuestion(
           question: question,
