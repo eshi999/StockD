@@ -41,7 +41,7 @@ def _most_recent_weekday(d):
 
 
 YESTERDAY = _most_recent_weekday(TODAY - timedelta(days=1))
-START_YEAR = TODAY.year - 10
+START_YEAR = TODAY.year - 1
 YEARS = list(range(START_YEAR, TODAY.year + 1))
 
 CSV_COLUMNS = [
