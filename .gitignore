@@ -14,10 +14,14 @@ migrate_working_dir/
 binaries/
 ML/historical/
 
-# PyInstaller build artifacts
+# PyInstaller & packaging/build artifacts
 ML/build/
 ML/dist/
 ML/*.spec
+backend_bundle_nvidia/
+pkg_deb/
+python.tar.gz
+.build.lock
 
 # IntelliJ related
 *.iml
@@ -33,12 +37,14 @@ ML/*.spec
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id
+.cache/
 .dart_tool/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
 /build/
 /coverage/
+.metadata
 
 # Symbolication related
 app.*.symbols
@@ -51,5 +57,3 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 ML/sage_training_data.csv
-
-build.sh # build script
